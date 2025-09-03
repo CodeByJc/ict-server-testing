@@ -1,0 +1,44 @@
+# Ignore database connection file
+# db_connection.php
+# Api/
+Api/DB/db_connection.php
+# Web/
+Web/DB/db_connection.php
+
+# Ignore API key validator or authorization file
+# ApiKeyValidator.php
+Api/Utils/ApiKeyValidator.php
+
+# Ignore environment files
+.env
+
+# Ignore other sensitive files
+config/*.php
+
+# Node.js dependencies (if any)
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# Backup files
+*.bak
+*.old
+*.swp
+
+# Composer dependencies (if using PHP Composer)
+vendor/
+composer.lock
