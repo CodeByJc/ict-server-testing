@@ -1,5 +1,4 @@
 <?php
-
 require_once __DIR__ . '/../controllers/PlacementController.php';
 
 function PlacementRoutes($method, $subpath) {
