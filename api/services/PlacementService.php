@@ -139,5 +139,4 @@ function addOldDataService($enrollmentNo, $companyInfoId, $date, $data) {
         if (isset($stmt)) $stmt->close();
     }
 }
-
 ?>
