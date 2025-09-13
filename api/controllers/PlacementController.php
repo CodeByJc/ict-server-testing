@@ -123,7 +123,6 @@ function AddOldDataController($input) {
             $hasError = true;
         }
     }
-
     // Set appropriate response code
     http_response_code($hasError ? 207 : 200); // 207 Multi-Status if any errors
     echo json_encode([
