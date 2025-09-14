@@ -29,6 +29,17 @@ function FacultyRoutes($method, $subpath) {
                 echo json_encode(['message' => 'Method not allowed']);
             }
             break;
+
+        case 'getMentorByStudent': // Handle "Faculty/getMentorByStudent"
+            if ($method === 'POST') {
+                GetMentorByStudentController($input);
+            } else {
+                http_response_code(405); // Method Not Allowed
+                echo json_encode(['message' => 'Method not allowed']);
+            }
+            break;
+
+        
         default:
             http_response_code(404); // Not Found
             echo json_encode(['message' => 'Invalid Faculty API endpoint']);
