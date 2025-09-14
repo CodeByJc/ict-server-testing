@@ -97,4 +97,26 @@ function GetFacultyListByStudentService($studentId) {
     http_response_code(401); // Unauthorized
     return ['status' => false, 'message' => 'Invalid Student Id'];
 }
+
+function GetMentorByStudentService($studentId) {
+    global $conn; 
+
+    $stmt = $conn->prepare("CALL GetStudentMentorDetailsById(?)");
+    if (!$stmt) {
+        return ['status' => false, 'message' => 'Failed to prepare the stored procedure'];
+    }
+    $stmt->bind_param("i", $studentId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result && $result->num_rows > 0) {
+        $mentor_data = $result->fetch_assoc();
+        $stmt->close();
+        return ['status' => true, 'data' => $mentor_data];
+    } else {
+        $stmt->close();
+        return ['status' => false, 'message' => 'Mentor not found'];
+    }
+}
+
 ?>
