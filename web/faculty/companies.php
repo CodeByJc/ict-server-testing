@@ -14,10 +14,11 @@ function isValidLinkedIn($url) {
 }
 
 // ---------- Handle Add/Edit ----------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POST['company_type'], $_POST['company_website'], $_POST['company_linkedin'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POST['company_type'], $_POST['company_domnain'], $_POST['company_website'], $_POST['company_linkedin'])) {
     $company_id      = isset($_POST['company_id']) ? intval($_POST['company_id']) : null;
     $company_name    = mysqli_real_escape_string($conn, $_POST['company_name']);
     $company_type    = mysqli_real_escape_string($conn, $_POST['company_type']);
+    $company_domain    = mysqli_real_escape_string($conn, $_POST['company_domain']);
     $company_website = mysqli_real_escape_string($conn, $_POST['company_website']);
     $company_linkedin= mysqli_real_escape_string($conn, $_POST['company_linkedin']);
 
@@ -33,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POS
 
     if ($company_id) {
         $update_query = "UPDATE company_info 
-                         SET company_name = '$company_name', company_type = '$company_type', 
+                         SET company_name = '$company_name', company_type = '$company_type', company_domain = '$company_domain', 
                              company_website = '$company_website', company_linkedin = '$company_linkedin' 
                          WHERE id = $company_id";
         if (mysqli_query($conn, $update_query)) {
@@ -41,8 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POS
             exit;
         }
     } else {
-        $insert_query = "INSERT INTO company_info (company_name, company_type, company_website, company_linkedin) 
-                         VALUES ('$company_name', '$company_type', '$company_website', '$company_linkedin')";
+        $insert_query = "INSERT INTO company_info (company_name, company_type, company_domain, company_website, company_linkedin) 
+                         VALUES ('$company_name', '$company_type', '$company_domain', '$company_website', '$company_linkedin')";
         if (mysqli_query($conn, $insert_query)) {
             header('Location: companies.php?status=added');
             exit;
@@ -108,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POS
             <th class="border px-4 py-2 rounded-tl-md">No</th>
             <th class="border px-4 py-2">Company Name</th>
             <th class="border px-4 py-2">Type</th>
+            <th class="border px-4 py-2">Domain</th>
             <th class="border px-4 py-2">Website</th>
             <th class="border px-4 py-2">LinkedIn</th>
             <th class="border px-4 py-2 rounded-tr-md">Actions</th>
@@ -125,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POS
                           <td class='border px-4 py-2 text-center'>{$counter}</td>
                           <td class='border px-4 py-2'>{$row['company_name']}</td>
                           <td class='border px-4 py-2 text-center'>{$row['company_type']}</td>
+                          <td class='border px-4 py-2 text-center'>{$row['company_domain']}</td>
                           <td class='border px-4 py-2 text-center'>";
                   // Website button
                   if (!empty($row['company_website']) && isValidWebsite($row['company_website'])) {
@@ -185,6 +188,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POS
             </select>
           </div>
           <div class="mb-4">
+            <label for="company_domain" class="block text-sm font-medium mb-1">Company Domain *</label>
+            <input type="text" id="company_domain" name="company_domain" class="border-2 rounded-md p-2 w-full" required>
+          </div>
+          <div class="mb-4">
             <label for="company_website" class="block text-sm font-medium mb-1">Company Website URL *</label>
             <input type="text" id="company_website" name="company_website" class="border-2 rounded-md p-2 w-full" required>
           </div>
@@ -208,6 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['company_name'], $_POS
       document.getElementById('company_id').value = id || '';
       document.getElementById('company_name').value = name || '';
       document.getElementById('company_type').value = type || 'Gujarat Based';
+      document.getElementById('company_domain').value = '';
       document.getElementById('company_website').value = website || '';
       document.getElementById('company_linkedin').value = linkedin || '';
       document.getElementById('popup-modal').classList.remove('hidden');
