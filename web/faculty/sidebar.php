@@ -76,6 +76,13 @@ $color = "cyan";
                             </a>
                         </li>
                         <li>
+                        <li>
+                            <a href="announcement_list.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-50 hover:text-<?php echo $color; ?>-700 active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Announcements
+                                </div>
+                            </a>
+                        </li>    
                             <a href="total_attendance_sheet.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
                                     Students Total Attendance
