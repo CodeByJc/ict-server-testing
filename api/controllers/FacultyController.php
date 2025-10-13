@@ -33,11 +33,13 @@ function GetFacultyListByStudentController($input) {
     $response = GetFacultyListByStudentService($studentId);
 
     if ($response['status']) {
-        echo json_encode($response['data']);
+        echo json_encode($response['data']); 
+        // will look like {"faculty_list": [...], "mentor": {...}}
     } else {
         echo json_encode(['message' => $response['message']]);
     }
 }
+
 
 function GetMentorByStudentController($input) {
     if (!isset($input['s_id'])) {
@@ -55,5 +57,4 @@ function GetMentorByStudentController($input) {
         echo json_encode(['message' => $response['message']]);
     }
 }
-
 ?>
