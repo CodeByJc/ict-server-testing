@@ -9,5 +9,6 @@ function validateApiKey() {
         echo json_encode(['message' => 'Unauthorized: Invalid API Key']);
         exit; // Stop further execution
     }
+    
 }
 ?>
