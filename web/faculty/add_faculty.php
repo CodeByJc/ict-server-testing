@@ -13,7 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $joining_date = mysqli_real_escape_string($conn, $_POST['joining_date']);
     $designation = mysqli_real_escape_string($conn, $_POST['designation']);
     $address = mysqli_real_escape_string($conn, $_POST['address'] ?? '');
-
     // Generate password: firstname@facultyId
     $password = $first_name . '@' . $faculty_id;
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
