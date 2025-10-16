@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Use __DIR__ to make all require paths relative to this file
 
 require_once __DIR__ . '/routes/AppVersionRoutes.php';
+require_once __DIR__ . '/routes/AnnouncementRoutes.php';
 require_once __DIR__ . '/routes/ParentRoutes.php';
 require_once __DIR__ . '/routes/FacultyRoutes.php';
 require_once __DIR__ . '/routes/StudentRoutes.php';
@@ -86,7 +87,9 @@ switch ($endpoint) {
     case 'Feedback':
         FeedbackRoutes($method, $subpath);
         break;
-
+    case 'Announcement':
+        AnnouncementRoutes($method, $subpath);
+        break;
     default:
         http_response_code(404);
         echo json_encode(['message' => 'Invalid endpoint']);

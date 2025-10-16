@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../db/db_connection_temp.php';
+require_once __DIR__ . '/../db/db_connection.php';
 
 function UpdatePasswordService($username, $currentPass, $newPass) {
     global $conn; // Use global DB connection

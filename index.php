@@ -1,6 +1,6 @@
 <?php
 // Include the database connection
-include __DIR__ . '/api/db/db_connection_temp.php';
+include __DIR__ . '/api/db/db_connection.php';
 
 // Fetch the number of enrolled students using MySQLi
 $query = "SELECT COUNT(*) as total_students FROM student_info";
