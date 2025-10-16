@@ -18,7 +18,7 @@ if (!isset($_POST['id']) || empty($_POST['id'])) {
 $announcement_id = intval($_POST['id']);
 
 // ✅ Delete query
-$stmt = $conn->prepare("DELETE FROM announcements WHERE Announcement_id = ?");
+$stmt = $conn->prepare("DELETE FROM announcements_info WHERE Announcement_id = ?");
 $stmt->bind_param("i", $announcement_id);
 
 if ($stmt->execute()) {

@@ -29,6 +29,14 @@ function StudentRoutes($method, $subpath) {
                 echo json_encode(['message' => 'Method not allowed']);
             }
             break;
+        case 'branch': // Handle "Student/branch"
+            if ($method === 'GET') {
+                GetBatchesByBranchController($input);
+            } else {
+                http_response_code(405); // Method Not Allowed
+                echo json_encode(['message' => 'Method not allowed']);
+            }
+            break;  
         default:
             http_response_code(404); // Not Found
             echo json_encode(['message' => 'Invalid Student API endpoint']);

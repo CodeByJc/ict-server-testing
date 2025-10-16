@@ -36,8 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header('Content-Type: application/json');
     try {
         $query = "SELECT a.Announcement_id, a.faculty_id, a.Announcement_title, a.Announcement_date, t.Announcement_type
-                  FROM announcements a
-                  LEFT JOIN announcement_type t ON a.Announcement_type_id = t.Announcement_type_id
+                  FROM announcements_info a
+                  LEFT JOIN announcement_type_list t ON a.Announcement_type_id = t.Announcement_type_id
                   ORDER BY a.Announcement_date DESC";
         $res = mysqli_query($conn, $query);
         if (!$res) throw new Exception(mysqli_error($conn));
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
     try {
-        $stmt = mysqli_prepare($conn, "DELETE FROM announcements WHERE Announcement_id = ?");
+        $stmt = mysqli_prepare($conn, "DELETE FROM announcements_info WHERE Announcement_id = ?");
         mysqli_stmt_bind_param($stmt, 'i', $id);
         $ok = mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);

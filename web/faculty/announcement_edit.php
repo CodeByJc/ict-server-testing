@@ -23,7 +23,7 @@ if (!$id) {
 }
 
 // ✅ Fetch existing announcement
-$query = $conn->prepare("SELECT * FROM announcements WHERE Announcement_id = ?");
+$query = $conn->prepare("SELECT * FROM announcements_info WHERE Announcement_id = ?");
 $query->bind_param("i", $id);
 $query->execute();
 $result = $query->get_result();

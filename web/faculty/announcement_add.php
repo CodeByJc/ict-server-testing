@@ -60,7 +60,7 @@ include('./navbar.php');
                     class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-cyan-500">
                     <option value="">-- Select Type --</option>
                     <?php
-                    $typeQuery = $conn->query("SELECT announcement_type_id, announcement_type FROM announcement_type");
+                    $typeQuery = $conn->query("SELECT announcement_type_id, announcement_type FROM announcement_type_list");
                     while ($type = $typeQuery->fetch_assoc()) {
                         echo "<option value='{$type['announcement_type_id']}'>{$type['announcement_type']}</option>";
                     }

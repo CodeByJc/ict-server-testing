@@ -16,7 +16,7 @@ try {
     $desc = $_POST['announcement_description'];
     $date = date('Y-m-d');
 
-    $sql = "INSERT INTO announcements (faculty_id, Announcement_title, Announcement_date, Announcement_type_id, batch_id, announcement_description) 
+    $sql = "INSERT INTO announcements_info (faculty_id, Announcement_title, Announcement_date, Announcement_type_id, batch_id, announcement_description) 
             VALUES (?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("isssis", $faculty_id, $title, $date, $type_id, $batch_id, $desc);

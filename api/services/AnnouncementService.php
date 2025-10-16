@@ -16,7 +16,7 @@ function createAnnouncementService($input) {
     }
 
     $stmt = $conn->prepare("
-        INSERT INTO announcements 
+        INSERT INTO announcements_info 
         (faculty_id, Announcement_title, announcement_description, batch_id, Announcement_date, Announcement_type_id) 
         VALUES (?, ?, ?, ?, ?, ?)
     ");
@@ -43,7 +43,7 @@ function getAllAnnouncementService($batch_id) {
             a.Announcement_type_id,
             a.batch_id
         FROM 
-            announcements a
+            announcements_info a
         JOIN 
             faculty_info f ON a.faculty_id = f.id
         WHERE 
@@ -77,7 +77,7 @@ function getAnnouncementByIdService($id) {
             a.batch_id,
             a.announcement_description
         FROM 
-            announcements a
+            announcements_info a
         JOIN 
             faculty_info f ON a.faculty_id = f.id
         WHERE 
