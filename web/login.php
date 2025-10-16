@@ -72,7 +72,7 @@ session_start(); // Start the session
     <br><br>
         <?php
         if ($_SERVER["REQUEST_METHOD"] == "POST") {
-            require_once __DIR__ . '/../api/db/db_connection_temp.php';// Database connection
+            require_once __DIR__ . '/../api/db/db_connection.php';// Database connection
 
             $username = $_POST['username'];
             $password = $_POST['password'];
