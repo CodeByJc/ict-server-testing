@@ -23,7 +23,7 @@ try {
     }
 
     // Update record
-    $sql = "UPDATE announcements 
+    $sql = "UPDATE announcements_info 
             SET Announcement_title=?, Announcement_type_id=?, batch_id=?, announcement_description=? 
             WHERE Announcement_id=?";
     $stmt = $conn->prepare($sql);

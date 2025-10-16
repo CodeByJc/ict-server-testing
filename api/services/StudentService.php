@@ -111,31 +111,4 @@ function searchStudentByFaculty($enrolment) {
     }
 }
 
-
-function GetBatchesByBranchService() {
-    global $conn;
-
-    try {
-        // Secure query
-        $stmt = $conn->prepare("SELECT id, CONCAT(batch_start_year	, ' - ', batch_end_year) AS batch_name FROM batch_info ORDER BY batch_name ASC");
-        $stmt->execute();
-        $result = $stmt->get_result();
-
-        $batches = [];
-        while ($row = $result->fetch_assoc()) {
-            $batches[] = $row;
-        }
-
-        if (empty($batches)) {
-            return ['status' => false, 'message' => 'No batches found for this branch'];
-        }
-
-        return ['status' => true, 'data' => $batches];
-    } catch (Exception $e) {
-        error_log("Error in GetBatchesByBranchService: " . $e->getMessage());
-        return ['status' => false, 'message' => 'Database error: ' . $e->getMessage()];
-    } finally {
-        if (isset($stmt)) $stmt->close();
-    }
-}
 ?>

@@ -5,7 +5,7 @@ function AnnouncementRoutes($method, $subpath) {
     $input = json_decode(file_get_contents("php://input"), true);
 
     switch ($subpath) {
-        case 'create':
+        case 'add':
             if ($method === 'POST') {
                 CreateAnnouncementController($input);
             } else {
@@ -15,17 +15,23 @@ function AnnouncementRoutes($method, $subpath) {
             break;
 
         case 'list':
-            if ($method === 'GET' && isset($_GET['batch_id'])) {
-                GetAllAnnouncementController($_GET['batch_id']);
+        if ($method === 'GET') {
+            if (isset($_GET['batch_id'])) {
+                GetAllAnnouncementController($_GET['batch_id'], null);
+            } elseif (isset($_GET['faculty_id'])) {
+                GetAllAnnouncementController(null, $_GET['faculty_id']);
             } else {
-                http_response_code(405);
-                echo json_encode(['message' => 'Method not allowed']);
+                GetAllAnnouncementController(null, null);
             }
-            break;
+        } else {
+            http_response_code(405);
+            echo json_encode(['message' => 'Method not allowed']);
+        }
+        break;
 
         case 'get':
-            if ($method === 'GET' && isset($_GET['id'])) {
-                GetAnnouncementByIdController($_GET['id']);
+            if ($method === 'GET' && isset($_GET['faculty_id'])) {
+                GetAnnouncementByIdController($_GET['faculty_id']);
             } else {
                 http_response_code(400);
                 echo json_encode(['message' => 'Missing or invalid ID']);
@@ -53,6 +59,17 @@ function AnnouncementRoutes($method, $subpath) {
             } else {
                 http_response_code(400);
                 echo json_encode(['status' => false, 'message' => 'Invalid request method']);
+            }
+            break;
+
+        case 'fields':
+            if ($method === 'GET') {
+                // This endpoint does not require any parameters
+                // Just call the controller function directly
+                GetAnnouncementFieldsController();
+            } else {
+                http_response_code(405);
+                echo json_encode(['message' => 'Method not allowed']);
             }
             break;
 

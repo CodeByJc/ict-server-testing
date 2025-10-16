@@ -6,13 +6,13 @@ function CreateAnnouncementController($input) {
     echo json_encode($response);
 }
 
-function GetAllAnnouncementController($batch_id) {
-    $response = getAllAnnouncementService($batch_id);
+function GetAllAnnouncementController($batch_id = null, $faculty_id = null) {
+    $response = getAllAnnouncementService($batch_id, $faculty_id);
     echo json_encode($response);
 }
 
-function GetAnnouncementByIdController($id) {
-    $response = getAnnouncementByIdService($id);
+function GetAnnouncementByIdController($faculty_id) {
+    $response = getAnnouncementByIdService($faculty_id);
     echo json_encode($response);
 }
 
@@ -23,5 +23,9 @@ function UpdateAnnouncementController($id, $input) {
 
 function DeleteAnnouncementController($id) {
     $response = deleteAnnouncementService($id);
+    echo json_encode($response);
+}
+function GetAnnouncementFieldsController() {
+    $response = getAnnouncementFieldsService();
     echo json_encode($response);
 }

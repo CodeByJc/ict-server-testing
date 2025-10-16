@@ -77,10 +77,11 @@ include('./navbar.php');
                     class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-cyan-500">
                     <option value="">-- Select Type --</option>
                     <?php
-                    $typeQuery = $conn->query("SELECT announcement_type_id, announcement_type FROM announcement_type");
+                    // Fixed: correct table and column names
+                    $typeQuery = $conn->query("SELECT Announcement_type_id, Announcement_type FROM announcement_type_list ORDER BY Announcement_type_id ASC");
                     while ($type = $typeQuery->fetch_assoc()) {
-                        $selected = ($announcement['Announcement_type_id'] == $type['announcement_type_id']) ? 'selected' : '';
-                        echo "<option value='{$type['announcement_type_id']}' $selected>{$type['announcement_type']}</option>";
+                        $selected = ($announcement['Announcement_type_id'] == $type['Announcement_type_id']) ? 'selected' : '';
+                        echo "<option value='{$type['Announcement_type_id']}' $selected>{$type['Announcement_type']}</option>";
                     }
                     ?>
                 </select>
@@ -93,10 +94,11 @@ include('./navbar.php');
                     class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-cyan-500">
                     <option value="">-- Select Batch --</option>
                     <?php
-                    $batchQuery = $conn->query("SELECT id, batch_start_year, batch_end_year FROM batch_info");
+                    // Fixed: correct table and column names, correct selected value!
+                    $batchQuery = $conn->query("SELECT id, batch_start_year, batch_end_year FROM batch_info ORDER BY batch_start_year ASC");
                     while ($batch = $batchQuery->fetch_assoc()) {
                         $label = $batch['batch_start_year'] . " - " . $batch['batch_end_year'];
-                        $selected = ($announcement['announcement_type_id'] == $batch['id']) ? 'selected' : '';
+                        $selected = ($announcement['batch_id'] == $batch['id']) ? 'selected' : '';
                         echo "<option value='{$batch['id']}' $selected>{$label}</option>";
                     }
                     ?>

@@ -33,22 +33,6 @@ function StudentLoginController($input) {
 }
 
 
-/**
- * Get Batch List By Branch
- */
-function GetBatchesByBranchController() {
-
-    // Call service function
-    $response = GetBatchesByBranchService();
-
-    // Send response
-    if ($response['status']) {
-        echo json_encode($response);
-    } else {
-        http_response_code(500);
-        echo json_encode(['status' => false, 'message' => $response['message']]);
-    }
-}
 
 
 /**
