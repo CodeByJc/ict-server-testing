@@ -15,8 +15,8 @@ function FeedbackRoutes($method, $subpath) {
             break;
 
         case 'by-student':
-            if ($method === 'GET' && isset($_GET['student_id'])) {
-                GetFeedbackByStudentController($_GET['student_id']);
+            if ($method === 'POST') {
+                GetFeedbackByStudentController($input);
             } else {
                 http_response_code(400);
                 echo json_encode(['message' => 'Missing or invalid student ID']);
