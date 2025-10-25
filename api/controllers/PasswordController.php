@@ -3,7 +3,6 @@
 require_once __DIR__ . '/../services/PasswordService.php';
 
 function UpdatePasswordController($input) {
-    
     if (!isset($input['username']) || !isset($input['currentPass']) || !isset($input['newPass'])){
         http_response_code(400);
         echo json_encode(['message' => 'Username and password required']);

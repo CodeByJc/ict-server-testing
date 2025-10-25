@@ -103,9 +103,11 @@ if ($student_result) {
 $student_count_query = "SELECT COUNT(*) AS total_students FROM student_info";
 $student_count_result = $conn->query($student_count_query);
 $total_students = 0;
+
 if ($student_count_result && $row = $student_count_result->fetch_assoc()) {
-    $total_students = $row['total_students'];
+    $total_students = (int) ($row['total_students'] ?? 0);
 }
+
 
 // Query to get the total number of subjects
 $subject_count_query = "SELECT COUNT(*) AS total_subjects FROM subject_info";
@@ -212,9 +214,12 @@ if ($placement_percentage_result) {
                     <i class="fa-solid fa-users text-2xl text-cyan-500"></i>
                 </div>
                 <div class="flex flex-row items-center justify-center space-x-2">
-                    <p id="student-count" class="text-xl font-bold text-cyan-600">00</p>
+                    <p id="student-count" class="text-xl font-bold text-cyan-600">
+                        <?= htmlspecialchars($total_students) ?>
+                    </p>
                     <h2 class="text-cyan-500 text-xl font-semibold">Students</h2>
                 </div>
+
             </div>
         </div>
 
@@ -297,7 +302,7 @@ const countUp = (elementId, start, end, duration) => {
 const totalHolidays = <?php echo $total_holidays; ?>;
 countUp('holiday-count', 0, totalHolidays, 1000);
 
-const totalStudents = <?php echo $total_students; ?>;
+const totalStudents = <?php echo (int)$total_students; ?>;
 countUp('student-count', 0, totalStudents, 1000);
 
 const totalFaculties = <?php echo $total_faculties; ?>;
