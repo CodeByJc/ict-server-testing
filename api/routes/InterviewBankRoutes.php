@@ -24,8 +24,8 @@ function InterviewBankRoutes($method, $subpath) {
             break;
 
         case 'get':
-            if ($method === 'GET' && isset($_GET['id'])) {
-                GetInterviewBankByIdController($_GET['id']);
+            if ($method === 'GET' && isset($_GET['student_id'])) {
+                GetInterviewBankByIdController($_GET['student_id']);
             } else {
                 http_response_code(400);
                 echo json_encode(['message' => 'Missing or invalid ID']);

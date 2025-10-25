@@ -38,10 +38,11 @@ ORDER BY date DESC");
     return ['status' => true, 'data' => $data];
 }
 
-function getInterviewBankByIdService($id) {
+function getInterviewBankByIdService($student_id) {
     global $conn;
-    $stmt = $conn->prepare("SELECT * FROM interview_bank WHERE id = ?");
-    $stmt->bind_param("i", $id);
+    $stmt = $conn->prepare("SELECT * FROM interview_bank ib INNER JOIN company_info ci ON ci.id = ib.company_info_id WHERE ib.student_info_id = ?;
+");
+    $stmt->bind_param("i", $student_id);
     $stmt->execute();
 
     $result = $stmt->get_result()->fetch_assoc();

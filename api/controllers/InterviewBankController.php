@@ -11,8 +11,8 @@ function GetAllInterviewBankController() {
     echo json_encode($response);
 }
 
-function GetInterviewBankByIdController($id) {
-    $response = getInterviewBankByIdService($id);
+function GetInterviewBankByIdController($student_id) {
+    $response = getInterviewBankByIdService($student_id);
     echo json_encode($response);
 }
 
