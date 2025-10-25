@@ -31,7 +31,10 @@ function createAnnouncementService($input) {
 
 function getAllAnnouncementService($batch_id = null, $faculty_id = null) {
     global $conn;
+
     $data = [];
+
+    // Base query with joins
     $query = "
         SELECT 
             a.Announcement_id,
@@ -41,28 +44,45 @@ function getAllAnnouncementService($batch_id = null, $faculty_id = null) {
             a.Announcement_date,
             a.announcement_description,
             a.Announcement_type_id,
+            atl.announcement_type,
             a.batch_id
-        FROM announcements_info a
-        JOIN faculty_info f ON a.faculty_id = f.id
+        FROM 
+            announcements_info AS a
+        INNER JOIN 
+            faculty_info AS f 
+            ON a.faculty_id = f.id
+        INNER JOIN 
+            announcement_type_list AS atl 
+            ON a.Announcement_type_id = atl.Announcement_type_id
     ";
+
     $params = [];
     $types = "";
     $where = [];
+
+    // Apply batch_id filter if provided
     if ($batch_id !== null && $batch_id > 0) {
         $where[] = "a.batch_id = ?";
         $params[] = $batch_id;
         $types .= "i";
     }
+
+    // Apply faculty_id filter if provided
     if ($faculty_id !== null && $faculty_id > 0) {
         $where[] = "a.faculty_id = ?";
         $params[] = $faculty_id;
         $types .= "i";
     }
-    if ($where) {
+
+    // Append WHERE clause if any filters exist
+    if (!empty($where)) {
         $query .= " WHERE " . implode(" AND ", $where);
     }
+
+    // Order by newest announcements first
     $query .= " ORDER BY a.Announcement_date DESC";
 
+    // Prepare and execute the statement
     $stmt = $conn->prepare($query);
     if ($params) {
         $stmt->bind_param($types, ...$params);
@@ -70,13 +90,19 @@ function getAllAnnouncementService($batch_id = null, $faculty_id = null) {
     $stmt->execute();
     $result = $stmt->get_result();
 
+    // Fetch results
     while ($row = $result->fetch_assoc()) {
         $data[] = $row;
     }
 
     $stmt->close();
-    return ['status' => true, 'data' => $data];
+
+    return [
+        'status' => true,
+        'data' => $data
+    ];
 }
+
 
 
 function getAnnouncementByIdService($faculty_id) {
