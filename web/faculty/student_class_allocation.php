@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         $query = "SELECT id, classname, batch 
                   FROM class_info 
-                  WHERE sem_info_id = ? AND `group` = 'regular' 
+                  WHERE sem_info_id = ?
                   ORDER BY classname, batch";
         $stmt = mysqli_prepare($conn, $query);
         mysqli_stmt_bind_param($stmt, 'i', $sem_id);

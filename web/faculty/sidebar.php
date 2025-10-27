@@ -91,14 +91,18 @@ $color = "cyan";
                         </li>
                         <?php if ($userdata['designation'] === 'hod'): ?>
                         <li>
-                            <a href="students_leave.php">
-                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?> justify-between group">
-                                    Students Leave Request
-                                    <?php if ($pending_leave > 0): ?>
-                                        <div class="bg-<?php echo $color; ?>-600 text-white px-2 py-1 rounded-full transition-colors duration-300 group-hover:bg-white group-hover:text-<?php echo $color; ?>-600">
-                                            <?php echo $pending_leave; ?>
-                                        </div>
-                                    <?php endif; ?>
+                            <a href="manage_batches.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Manage Batches
+                                </div>
+                            </a>
+                        </li>
+                        <?php endif; ?>
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
+                            <a href="add_new_students_sheets.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    New Students Upload
                                 </div>
                             </a>
                         </li>
@@ -108,6 +112,43 @@ $color = "cyan";
                             <a href="manage_class.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
                                     Manage Class
+                                </div>
+                            </a>
+                        </li>
+                        <?php endif; ?>
+                        
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
+                            <a href="subjects.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Manage Subjects
+                                </div>
+                            </a>
+                        </li>
+                        <?php endif; ?>
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
+                            <a href="student_class_allocation.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Student Class Allocation
+                                </div>
+                            </a>
+                        </li>
+                        <?php endif; ?>
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
+                            <a href="subject_allocation.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Manage Subject Allocation
+                                </div>
+                            </a>
+                        </li>
+                        <?php endif; ?>
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
+                            <a href="student_elective_allocation.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Elective Subject Allocation
                                 </div>
                             </a>
                         </li>
@@ -123,47 +164,14 @@ $color = "cyan";
                         <?php endif; ?>
                         <?php if ($userdata['designation'] === 'hod'): ?>
                         <li>
-                            <a href="manage_batches.php">
-                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
-                                    Manage Batches
-                                </div>
-                            </a>
-                        </li>
-                        <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
-                        <li>
-                            <a href="student_class_allocation.php">
-                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
-                                    Student Class Allocation
-                                </div>
-                            </a>
-                        </li>
-                        <?php endif; ?>
-
-                        <?php if ($userdata['designation'] === 'hod'): ?>
-                        <li>
-                            <a href="add_new_students_sheets.php">
-                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
-                                    New Students Upload
-                                </div>
-                            </a>
-                        </li>
-                        <?php endif; ?>
-
-                        <?php if ($userdata['designation'] === 'hod'): ?>
-                        <li>
-                            <a href="subject_allocation.php">
-                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
-                                    Manage Subject Allocation
-                                </div>
-                            </a>
-                        </li>
-                        <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
-                        <li>
-                            <a href="student_elective_allocation.php">
-                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
-                                    Elective Subject Allocation
+                            <a href="students_leave.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?> justify-between group">
+                                    Students Leave Request
+                                    <?php if ($pending_leave > 0): ?>
+                                        <div class="bg-<?php echo $color; ?>-600 text-white px-2 py-1 rounded-full transition-colors duration-300 group-hover:bg-white group-hover:text-<?php echo $color; ?>-600">
+                                            <?php echo $pending_leave; ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </a>
                         </li>
