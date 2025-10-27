@@ -1,358 +1,422 @@
 <?php
+// allocate_faculty.php
+// UI + AJAX endpoints to allocate faculty to assigned subjects (subject_allocation table).
+// Uses ../../api/db/db_connection.php for DB connection and keeps your Tailwind/SweetAlert theme.
+
 include('../../api/db/db_connection.php');
+if (!$conn) {
+    http_response_code(500);
+    die('Database connection failed');
+}
+
+function h($s) { return htmlspecialchars($s, ENT_QUOTES); }
 
 // Handle AJAX requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    header('Content-Type: application/json');
-
+    header('Content-Type: application/json; charset=utf-8');
     $action = $_POST['action'];
 
-    if ($action === 'fetch') {
-        $subject_id = isset($_POST['subject_info_id']) ? intval($_POST['subject_info_id']) : 0;
-
-        if ($subject_id <= 0) {
-            echo json_encode(['error' => 'Invalid subject ID']);
+    // Return subjects for the semester (derived from class)
+    if ($action === 'fetch_subjects') {
+        $sem_id = isset($_POST['sem_id']) ? intval($_POST['sem_id']) : 0;
+        if ($sem_id <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid semester id']);
             exit;
         }
 
-        $query = "SELECT sa.id AS allocation_id, fi.id, fi.first_name, fi.last_name, ul.email 
-                  FROM subject_allocation sa 
-                  JOIN faculty_info fi ON sa.faculty_info_id = fi.id 
-                  JOIN user_login ul ON fi.user_login_id = ul.username 
-                  WHERE sa.subject_info_id = ? 
-                  ORDER BY fi.first_name, fi.last_name";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'i', $subject_id);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-
-        $faculties = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $faculties[] = $row;
+        $sql = "SELECT id, subject_name, short_name, subject_code, lec_type, CAST(is_creditable AS UNSIGNED) AS is_creditable
+                FROM subject_info WHERE sem_info_id = ? ORDER BY subject_name";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            echo json_encode(['status' => 'error', 'message' => 'DB prepare error: ' . $conn->error]);
+            exit;
         }
-
-        echo json_encode($faculties);
-
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
+        $stmt->bind_param('i', $sem_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $rows = [];
+        while ($r = $res->fetch_assoc()) {
+            $r['is_creditable'] = isset($r['is_creditable']) ? (int)$r['is_creditable'] : 0;
+            $rows[] = $r;
+        }
+        $stmt->close();
+        echo json_encode(['status' => 'ok', 'data' => $rows]);
         exit;
     }
 
-    if ($action === 'allocate') {
-        $subject_id = isset($_POST['subject_info_id']) ? intval($_POST['subject_info_id']) : 0;
-        $faculty_id = isset($_POST['faculty_info_id']) ? intval($_POST['faculty_info_id']) : 0;
-
-        if ($subject_id <= 0 || $faculty_id <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid subject or faculty ID']);
+    // Return faculties (use prepared statement for consistency)
+    if ($action === 'fetch_faculties') {
+        $sql = "SELECT f.id,
+                       COALESCE(CONCAT(TRIM(f.first_name), ' ', TRIM(f.last_name)), COALESCE(ul.username, ''), '') AS name
+                FROM faculty_info f
+                LEFT JOIN user_login ul ON f.user_login_id = ul.username
+                ORDER BY f.first_name, f.last_name, ul.username";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            echo json_encode(['status' => 'error', 'message' => 'DB prepare error: ' . $conn->error]);
             exit;
         }
-
-        // Check if allocation already exists
-        $check_query = "SELECT id FROM subject_allocation WHERE subject_info_id = ? AND faculty_info_id = ?";
-        $check_stmt = mysqli_prepare($conn, $check_query);
-        mysqli_stmt_bind_param($check_stmt, 'ii', $subject_id, $faculty_id);
-        mysqli_stmt_execute($check_stmt);
-        mysqli_stmt_store_result($check_stmt);
-
-        if (mysqli_stmt_num_rows($check_stmt) > 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Faculty is already allocated to this subject']);
-            mysqli_stmt_close($check_stmt);
-            exit;
-        }
-        mysqli_stmt_close($check_stmt);
-
-        // Insert new allocation
-        $insert_query = "INSERT INTO subject_allocation (subject_info_id, faculty_info_id) VALUES (?, ?)";
-        $insert_stmt = mysqli_prepare($conn, $insert_query);
-        mysqli_stmt_bind_param($insert_stmt, 'ii', $subject_id, $faculty_id);
-
-        if (mysqli_stmt_execute($insert_stmt)) {
-            echo json_encode(['status' => 'success']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Failed to allocate faculty']);
-        }
-
-        mysqli_stmt_close($insert_stmt);
-        mysqli_close($conn);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $rows = [];
+        while ($r = $res->fetch_assoc()) $rows[] = $r;
+        $stmt->close();
+        echo json_encode(['status' => 'ok', 'data' => $rows]);
         exit;
     }
 
-    if ($action === 'delete') {
-        $allocation_id = isset($_POST['allocation_id']) ? intval($_POST['allocation_id']) : 0;
+    // Get allocations for a class (subject_allocation)
+    if ($action === 'get_allocations') {
+        $class_id = isset($_POST['class_id']) ? intval($_POST['class_id']) : 0;
+        if ($class_id <= 0) { echo json_encode(['status' => 'error', 'message' => 'Invalid class id']); exit; }
 
-        if ($allocation_id <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid allocation ID']);
-            exit;
-        }
-
-        $query = "DELETE FROM subject_allocation WHERE id = ?";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'i', $allocation_id);
-
-        if (mysqli_stmt_execute($stmt)) {
-            echo json_encode(['status' => 'success']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Failed to delete allocation']);
-        }
-
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
+        $sql = "SELECT subject_info_id AS subject_id, faculty_info_id AS faculty_id FROM subject_allocation WHERE class_info_id = ?";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) { echo json_encode(['status' => 'error', 'message' => $conn->error]); exit; }
+        $stmt->bind_param('i', $class_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $alloc = [];
+        while ($r = $res->fetch_assoc()) $alloc[] = ['subject_id' => (int)$r['subject_id'], 'faculty_id' => (int)$r['faculty_id']];
+        $stmt->close();
+        echo json_encode(['status' => 'ok', 'data' => $alloc]);
         exit;
     }
 
-    echo json_encode(['status' => 'error', 'message' => 'Invalid action']);
+    // Save allocations for a class: assignments JSON [{subject_id, faculty_id}, ...]
+    if ($action === 'save_allocations') {
+        $class_id = isset($_POST['class_id']) ? intval($_POST['class_id']) : 0;
+        $assignments_json = isset($_POST['assignments']) ? $_POST['assignments'] : '[]';
+        if ($class_id <= 0) { echo json_encode(['status' => 'error', 'message' => 'Invalid class id']); exit; }
+
+        $assignments = json_decode($assignments_json, true);
+        if (!is_array($assignments)) $assignments = [];
+
+        // sanitize & normalize assignments: allow multiple faculty per subject
+        $clean = [];
+        foreach ($assignments as $a) {
+            $sid = isset($a['subject_id']) ? intval($a['subject_id']) : 0;
+            $fid = isset($a['faculty_id']) ? intval($a['faculty_id']) : 0;
+            if ($sid > 0) $clean[] = ['subject_id' => $sid, 'faculty_id' => $fid];
+        }
+
+        // Use transaction: delete existing then insert new rows (one row per subject+faculty)
+        $conn->begin_transaction();
+        try {
+            $del = $conn->prepare("DELETE FROM subject_allocation WHERE class_info_id = ?");
+            if (!$del) throw new Exception('Prepare delete failed: ' . $conn->error);
+            $del->bind_param('i', $class_id);
+            $del->execute();
+            $del->close();
+
+            if (!empty($clean)) {
+                $ins = $conn->prepare("INSERT INTO subject_allocation (faculty_info_id, subject_info_id, class_info_id) VALUES (?, ?, ?)");
+                if (!$ins) throw new Exception('Prepare insert failed: ' . $conn->error);
+                foreach ($clean as $row) {
+                    $fid = $row['faculty_id'];
+                    $sid = $row['subject_id'];
+                    $ins->bind_param('iii', $fid, $sid, $class_id);
+                    $ins->execute();
+                }
+                $ins->close();
+            }
+
+            $conn->commit();
+            echo json_encode(['status' => 'ok', 'message' => 'Allocations saved']);
+        } catch (Exception $e) {
+            $conn->rollback();
+            echo json_encode(['status' => 'error', 'message' => 'Save failed: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    echo json_encode(['status' => 'error', 'message' => 'Unknown action']);
     exit;
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Subject Allocation</title>
-    <link rel="icon" type="image/png" href="../assets/images/favicon.png">
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Allocate Faculty to Subjects</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
     <style>
-        #faculty-table {
-            border-collapse: collapse;
+        /* clean & focused, matching your app theme */
+        .card { background:#fff; border-radius:12px; padding:18px; box-shadow: 0 6px 18px rgba(15,23,42,0.06); border:1px solid #e6edf3; }
+        .subject-list { max-height:520px; overflow:auto; border:1px solid #e6edf3; border-radius:8px; background:#fff; }
+        .small { font-size:0.9rem; color:#6b7280; }
+        .faculty-select { min-width:200px; }
+        select[multiple] { min-height:96px; }
+        .hint { font-size:0.85rem; color:#4b5563; }
+        .faculty-list {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            background: #fafafa;
+            max-height: 140px;
+            overflow-y: auto;
         }
-        #faculty-table th, #faculty-table td {
-            text-align: center;
-            border: 1px solid #d1d5db; /* gray-300 */
+        .faculty-list label:hover {
+            background-color: #f1f5f9;
+            border-radius: 6px;
         }
-        #faculty-table th {
-            background-color: #374151; /* gray-700 */
-            color: #ffffff; /* white */
-        }
-        #faculty-table tbody tr:hover {
-            background-color: #f9fafb; /* gray-50 */
-        }
+
     </style>
 </head>
-
 <body class="bg-gray-100 text-gray-800 flex h-screen overflow-hidden">
-    <?php include('./sidebar.php'); ?>
-    <div class="main-content pl-64 flex-1 ml-1/6 overflow-y-auto">
-        <?php
-        $page_title = "Subject Allocation";
-        include('./navbar.php');
-        ?>
-        <div class="container mx-auto p-6">
-            <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-                <div class="w-full md:w-1/2 mb-4">
-                    <label for="subject" class="block text-gray-700 font-bold mb-2">Select Subject</label>
-                    <select id="subject" name="subject" class="w-full p-3 border-2 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:outline-none">
-                        <option value="" disabled selected>Select Subject</option>
+<?php include('./sidebar.php'); ?>
+<div class="main-content pl-64 flex-1 ml-1/6 overflow-y-auto">
+    <?php $page_title = "Allocate Faculty"; include('./navbar.php'); ?>
+
+    <div class="container mx-auto p-6">
+        <div class="card mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">Class</label>
+                    <select id="class_select" class="w-full p-3 border-2 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                        <option value="" disabled selected>Select Class</option>
                         <?php
-                        $subject_query = "SELECT si.id, si.subject_name, smi.sem, smi.edu_type 
-                                         FROM subject_info si 
-                                         JOIN sem_info smi ON si.sem_info_id = smi.id 
-                                         ORDER BY smi.edu_type, smi.sem, si.subject_name";
-                        $subject_result = mysqli_query($conn, $subject_query);
-                        while ($row = mysqli_fetch_assoc($subject_result)) {
-                            echo "<option value='{$row['id']}'>{$row['subject_name']} (SEM {$row['sem']} - " . strtoupper($row['edu_type']) . ")</option>";
+                        $sql = "SELECT c.id, c.classname, c.batch, c.sem_info_id, s.sem, s.edu_type
+                                FROM class_info c
+                                LEFT JOIN sem_info s ON s.id = c.sem_info_id
+                                ORDER BY s.edu_type, s.sem, c.classname, c.batch";
+                        $res = mysqli_query($conn, $sql);
+                        while ($r = mysqli_fetch_assoc($res)) {
+                            $label = sprintf('%s (Batch %s) - SEM %s - %s', $r['classname'], $r['batch'], $r['sem'] ?? 'N/A', strtoupper($r['edu_type'] ?? ''));
+                            echo '<option value="'.h($r['id']).'" data-sem="'.h($r['sem_info_id']).'">'.h($label).'</option>';
                         }
                         ?>
                     </select>
                 </div>
-            </div>
-            <div class="p-6 bg-white rounded-xl shadow-md">
-                <button id="allocate-btn" onclick="openAllocatePopup()" class="bg-cyan-500 shadow-md hover:shadow-xl px-6 text-white p-2 rounded-full hover:bg-cyan-600 transition-all mb-6" disabled>Allocate Faculty</button>
-                <table id="faculty-table" class="min-w-full bg-white shadow-lg rounded-md border border-gray-300">
-                    <thead>
-                        <tr class="bg-gray-700 text-white">
-                            <th class="border px-4 py-2 rounded-tl-md">No</th>
-                            <th class="border px-4 py-2">Faculty Name</th>
-                            <th class="border px-4 py-2">Email</th>
-                            <th class="border px-4 py-2 rounded-tr-md">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">Semester</label>
+                    <input id="sem_display" readonly class="w-full p-3 border-2 rounded-xl bg-gray-50" />
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 font-bold mb-2">Actions</label>
+                    <div class="flex gap-2">
+                        <button id="btn_refresh" class="bg-white border px-4 py-2 rounded-full hover:shadow">Refresh</button>
+                        <button id="btn_save" class="ml-auto bg-cyan-500 text-white px-4 py-2 rounded-full shadow-md hover:bg-cyan-600" disabled>Save Allocations</button>
+                    </div>
+                    <p class="small mt-2">Check subjects then select one or more faculty per subject. To select multiple faculty hold Ctrl (Windows) or Cmd (Mac) while clicking.</p>
+                </div>
             </div>
         </div>
-        <div id="allocate-popup" class="fixed inset-0 bg-gray-800 bg-opacity-50 hidden flex justify-center items-center">
-            <div class="bg-white rounded-lg p-6 w-96">
-                <h2 id="popup-title" class="text-xl font-bold mb-4">Allocate Faculty</h2>
-                <form id="allocate-form">
-                    <input type="hidden" name="subject_info_id" id="subject_info_id">
-                    <div class="mb-4">
-                        <label for="faculty" class="block text-sm font-medium mb-1">Select Faculty</label>
-                        <select id="faculty" name="faculty_info_id" class="border-2 rounded p-2 w-full" required>
-                            <option value="" disabled selected>Select Faculty</option>
-                            <?php
-                            $faculty_query = "SELECT id, first_name, last_name FROM faculty_info ORDER BY first_name, last_name";
-                            $faculty_result = mysqli_query($conn, $faculty_query);
-                            while ($row = mysqli_fetch_assoc($faculty_result)) {
-                                echo "<option value='{$row['id']}'>{$row['first_name']} {$row['last_name']}</option>";
-                            }
-                            ?>
-                        </select>
+
+        <div class="card">
+            <h2 class="text-lg font-semibold mb-3">Allocate Faculty to Assigned Subjects</h2>
+
+            <div class="flex gap-6">
+                <div class="w-2/3">
+                    <div id="subjects_container" class="subject-list p-2">
+                        <div id="no_subjects" class="small p-4">Select a class to load its semester subjects.</div>
+                        <div id="subjects_box"></div>
                     </div>
-                    <div class="flex justify-end gap-4">
-                        <button type="button" onclick="closePopup()" class="pl-5 pr-5 bg-gray-500 hover:bg-gray-600 text-white p-2 rounded-full">Cancel</button>
-                        <button type="submit" class="pl-6 pr-6 bg-cyan-500 hover:bg-cyan-600 text-white p-2 rounded-full">Allocate</button>
+                </div>
+
+                <div class="w-1/3">
+                    <div class="p-4 border rounded">
+                        <h3 class="font-semibold">Preview & Summary</h3>
+                        <div id="assigned_count" class="mt-3 small">Assigned: 0</div>
+                        <div id="assigned_preview" class="mt-3 small">No allocations yet.</div>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>
+</div>
 
-    <script>
-        $(document).ready(function () {
-            let selectedSubjectId = '';
-            let selectedSubjectName = '';
-            const table = $('#faculty-table').DataTable({
-                paging: false,
-                info: false,
-                searching: false,
-                ordering: false,
-                language: {
-                    emptyTable: 'Please select a subject to view allocated faculties'
-                },
-                columns: [
-                    { data: 'no' },
-                    { data: 'faculty_name' },
-                    { data: 'email' },
-                    { data: 'actions' }
-                ]
+<script>
+$(function(){
+    let currentClassId = null;
+    let currentSemId = null;
+    let subjectsCache = [];
+    let facultyCache = [];
+
+    function toastError(msg){ Swal.fire({icon:'error', title:'Error', text: msg}); }
+    function toastSuccess(msg){ Swal.fire({icon:'success', title:'Success', text: msg, timer:1200, showConfirmButton:false}); }
+    function escapeHtml(text){ if (text === null || text === undefined) return ''; return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+
+    // Load faculties once
+    function loadFaculties(cb) {
+        if (facultyCache.length) { if (cb) cb(); return; }
+        $.post('', { action: 'fetch_faculties' }, function(resp){
+            if (!resp || resp.status !== 'ok') { toastError('Failed to load faculties'); if (cb) cb(); return; }
+            facultyCache = resp.data || [];
+            if (cb) cb();
+        }, 'json').fail(function(xhr){ toastError('AJAX error loading faculties: ' + xhr.responseText); if (cb) cb(); });
+    }
+
+    // Load subjects for semester
+    function loadSubjectsForSem(sem_id) {
+        $('#subjects_box').empty();
+        $('#no_subjects').show().text('Loading subjects...');
+        $('#btn_save').prop('disabled', true);
+        $('#assigned_preview').text('Loading...');
+        $.post('', { action: 'fetch_subjects', sem_id: sem_id }, function(resp){
+            if (!resp || resp.status !== 'ok') {
+                toastError((resp && resp.message) ? resp.message : 'Failed to fetch subjects');
+                $('#no_subjects').text('Failed to load subjects.');
+                return;
+            }
+            subjectsCache = resp.data || [];
+            if (subjectsCache.length === 0) {
+                $('#no_subjects').text('No subjects found for this semester.');
+                $('#assigned_preview').text('—');
+                $('#assigned_count').text('Assigned: 0');
+                return;
+            }
+            $('#no_subjects').hide();
+
+            loadFaculties(function(){
+                const $box = $('#subjects_box');
+                subjectsCache.forEach(function(s){
+                    const id = s.id;
+                    const creditLabel = (s.is_creditable == 1 || s.is_creditable === '1') ? 'Credit' : 'Non-Credit';
+                    // multi-select for faculty (allow multiple selection)
+                    let facultyOptions = '<option value="0">Unassigned</option>';
+                    facultyCache.forEach(function(f){ facultyOptions += `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`; });
+
+                    const row = `<div class="flex items-center justify-between py-3 border-b last:border-b-0">
+                        <label class="flex items-center gap-3 w-full">
+                            <input type="checkbox" class="alloc-checkbox" data-sub="${escapeHtml(id)}">
+                            <div class="flex-1">
+                                <div class="font-medium">${escapeHtml(s.subject_name)}</div>
+                                <div class="small text-gray-500">${escapeHtml(s.short_name)} · ${escapeHtml(s.subject_code)}</div>
+                            </div>
+                            <div class="small text-gray-600 pr-2">${escapeHtml(creditLabel)}</div>
+                            <div>
+                                <div class="faculty-list space-y-1" data-subject="${escapeHtml(id)}">
+                                    ${facultyCache.map(f => `
+                                        <label class="flex items-center gap-2 text-sm text-gray-700">
+                                            <input type="checkbox" class="faculty-checkbox accent-cyan-500" value="${escapeHtml(f.id)}" data-subject="${escapeHtml(id)}">
+                                            <span>${escapeHtml(f.name)}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </label>
+                    </div>`;
+                    $box.append(row);
+                });
+
+                // fetch existing allocations for this class
+                if (currentClassId) fetchAllocations(currentClassId);
+                $('#btn_save').prop('disabled', false);
+            });
+        }, 'json').fail(function(xhr){ toastError('AJAX error when loading subjects: ' + xhr.responseText); $('#no_subjects').text('Failed to load subjects.'); });
+    }
+
+    // Fetch allocations for class and set UI
+    function fetchAllocations(class_id) {
+        $.post('', { action: 'get_allocations', class_id: class_id }, function(resp){
+            if (!resp || resp.status !== 'ok') { toastError((resp && resp.message) ? resp.message : 'Failed to fetch allocations'); return; }
+            const alloc = resp.data || [];
+
+            // Build mapping subject_id => [faculty_ids]
+            const map = {};
+            alloc.forEach(function(a){
+                if (!map[a.subject_id]) map[a.subject_id] = [];
+                map[a.subject_id].push(String(a.faculty_id));
             });
 
-            // Enable/Disable Allocate Button
-            $('#subject').change(function () {
-                selectedSubjectId = $(this).val();
-                selectedSubjectName = $(this).find('option:selected').text();
-                console.log('Selected subject_id:', selectedSubjectId, 'Name:', selectedSubjectName);
-                $('#allocate-btn').prop('disabled', !selectedSubjectId);
-
-                if (selectedSubjectId) {
-                    $.ajax({
-                        url: 'subject_allocation.php',
-                        method: 'POST',
-                        data: { action: 'fetch', subject_info_id: selectedSubjectId },
-                        dataType: 'json',
-                        success: function (data) {
-                            console.log('fetch response:', data);
-                            if (!Array.isArray(data)) {
-                                console.error('Expected an array, got:', data);
-                                Swal.fire('Error', data.error || 'Invalid response format from server.', 'error');
-                                table.clear().draw();
-                                return;
-                            }
-
-                            table.clear();
-                            if (data.length === 0) {
-                                table.draw();
-                                return;
-                            }
-
-                            const rows = data.map((faculty, index) => ({
-                                no: index + 1,
-                                faculty_name: `${faculty.first_name || 'N/A'} ${faculty.last_name || ''}`,
-                                email: faculty.email || 'N/A',
-                                actions: `<button type="button" onclick="deleteAllocation(${faculty.allocation_id})" class="text-red-500">Delete</button>`
-                            }));
-                            table.rows.add(rows).draw();
-                        },
-                        error: function (xhr, status, error) {
-                            console.error('fetch AJAX error:', status, error, 'Response:', xhr.responseText);
-                            Swal.fire('Error', 'Failed to load faculties. Check the console for details.', 'error');
-                            table.clear().draw();
-                        }
-                    });
-                } else {
-                    table.clear().draw();
-                }
-            });
-
-            // Handle Allocation Form Submission
-            $('#allocate-form').submit(function (e) {
-                e.preventDefault();
-                const formData = $(this).serialize() + '&action=allocate';
-                $.ajax({
-                    url: 'subject_allocation.php',
-                    method: 'POST',
-                    data: formData,
-                    dataType: 'json',
-                    success: function (response) {
-                        console.log('allocate response:', response);
-                        if (response.status === 'success') {
-                            Swal.fire({
-                                title: 'Allocated!',
-                                text: 'Faculty has been allocated successfully.',
-                                icon: 'success'
-                            }).then(() => {
-                                closePopup();
-                                $('#subject').trigger('change');
-                            });
-                        } else {
-                            Swal.fire('Error', response.message || 'Failed to allocate faculty.', 'error');
-                        }
-                    },
-                    error: function (xhr, status, error) {
-                        console.error('allocate AJAX error:', status, error, 'Response:', xhr.responseText);
-                        Swal.fire('Error', 'Failed to allocate faculty. Check the console for details.', 'error');
-                    }
+            $('.alloc-checkbox').prop('checked', false);
+            $('.faculty-checkbox').prop('checked', false);
+            Object.keys(map).forEach(function(sid){
+                const arr = map[sid];
+                const filtered = arr.filter(x => x !== null && x !== undefined);
+                $(`.alloc-checkbox[data-sub="${sid}"]`).prop('checked', filtered.length > 0);
+                $(`.faculty-select[data-subject="${sid}"]`).val(filtered);
+                filtered.forEach(function(fid){
+                    $(`.faculty-checkbox[data-subject="${sid}"][value="${fid}"]`).prop('checked', true);
                 });
             });
-        });
 
-        function openAllocatePopup() {
-            const subjectName = $('#subject option:selected').text();
-            $('#popup-title').text(`Allocate Faculty for ${subjectName}`);
-            $('#subject_info_id').val($('#subject').val());
-            $('#faculty').val('');
-            $('#allocate-popup').removeClass('hidden');
-        }
+            // Update preview and count
+            const uniqueSubjects = Object.keys(map).length;
+            let totalRows = 0;
+            Object.values(map).forEach(v => { totalRows += v.length; });
+            $('#assigned_count').text('Assigned subjects: ' + uniqueSubjects + ' — total faculty rows: ' + totalRows);
 
-        function closePopup() {
-            $('#allocate-popup').addClass('hidden');
-            $('#allocate-form')[0].reset();
-            $('#subject_info_id').val('');
-        }
+            const names = [];
+            Object.keys(map).forEach(function(sid){
+                const subject = subjectsCache.find(x => parseInt(x.id) === parseInt(sid));
+                const facNames = (map[sid] || []).map(function(fid){
+                    const f = facultyCache.find(x => parseInt(x.id) === parseInt(fid));
+                    return f ? f.name : ('#' + fid);
+                });
+                names.push((subject ? subject.subject_name : ('#' + sid)) + ' (' + (facNames.length ? facNames.join(', ') : 'Unassigned') + ')');
+            });
+            $('#assigned_preview').html(names.length ? names.join('<br>') : 'No assigned subjects');
+        }, 'json').fail(function(xhr){ toastError('AJAX error fetching allocations: ' + xhr.responseText); });
+    }
 
-        function deleteAllocation(allocation_id) {
-            Swal.fire({
-                title: 'Are you sure?',
-                text: 'This faculty allocation will be permanently deleted.',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#3085d6',
-                cancelButtonColor: '#d33',
-                confirmButtonText: 'Yes, delete it!'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    $.ajax({
-                        url: 'subject_allocation.php',
-                        method: 'POST',
-                        data: { action: 'delete', allocation_id: allocation_id },
-                        dataType: 'json',
-                        success: function (response) {
-                            console.log('delete response:', response);
-                            if (response.status === 'success') {
-                                Swal.fire('Deleted!', 'Faculty allocation has been deleted.', 'success').then(() => {
-                                    $('#subject').trigger('change');
-                                });
-                            } else {
-                                Swal.fire('Error', response.message || 'Failed to delete allocation.', 'error');
-                            }
-                        },
-                        error: function (xhr, status, error) {
-                            console.error('delete AJAX error:', status, error, 'Response:', xhr.responseText);
-                            Swal.fire('Error', 'Failed to delete allocation. Check the console for details.', 'error');
-                        }
+    // Save allocations
+    function saveAllocations(class_id) {
+        const assignments = [];
+        $('#subjects_box .alloc-checkbox').each(function(){
+            const sid = $(this).data('sub');
+            const checked = $(this).is(':checked');
+            // get selected options from multi-select
+            const raw = [];
+            $(`.faculty-checkbox[data-subject="${sid}"]:checked`).each(function(){
+                raw.push($(this).val());
+            });
+
+            let arr = Array.isArray(raw) ? raw.slice() : [raw];
+            arr = arr.filter(x => x !== null && x !== undefined && x !== '');
+            if (arr.length > 1) arr = arr.filter(x => x !== '0'); // remove Unassigned if other selections exist
+            if (checked) {
+                if (arr.length === 0) {
+                    assignments.push({ subject_id: parseInt(sid), faculty_id: 0 });
+                } else {
+                    arr.forEach(function(fid){
+                        assignments.push({ subject_id: parseInt(sid), faculty_id: parseInt(fid) || 0 });
                     });
                 }
-            });
-        }
-    </script>
-</body>
+            }
+        });
 
+        $.post('', { action: 'save_allocations', class_id: class_id, assignments: JSON.stringify(assignments) }, function(resp){
+            if (!resp) { toastError('Invalid server response'); return; }
+            if (resp.status !== 'ok') return toastError(resp.message || 'Save failed');
+            toastSuccess(resp.message || 'Allocations saved');
+            fetchAllocations(class_id);
+        }, 'json').fail(function(xhr){ toastError('AJAX error on save: ' + xhr.responseText); });
+    }
+
+    // UI handlers
+    $('#class_select').on('change', function(){
+        currentClassId = $(this).val() ? parseInt($(this).val()) : null;
+        currentSemId = $(this).find(':selected').data('sem') ? parseInt($(this).find(':selected').data('sem')) : null;
+        $('#sem_display').val(currentSemId ? 'SEM ' + currentSemId : '');
+        if (currentClassId && currentSemId) {
+            loadSubjectsForSem(currentSemId);
+            $('#btn_save').prop('disabled', false);
+        } else {
+            $('#subjects_box').empty();
+            $('#no_subjects').show().text('Select a class to load its semester subjects.');
+            $('#assigned_preview').text('No allocations yet.');
+            $('#assigned_count').text('Assigned: 0');
+            $('#btn_save').prop('disabled', true);
+        }
+    });
+
+    $('#btn_refresh').on('click', function(){ if (currentSemId) loadSubjectsForSem(currentSemId); else toastError('Select a class first'); });
+    $('#btn_save').on('click', function(){ if (!currentClassId) return toastError('Select a class first'); saveAllocations(currentClassId); });
+
+    // Initial state
+    loadFaculties();
+    $('#class_select').trigger('change');
+});
+</script>
+</body>
 </html>
