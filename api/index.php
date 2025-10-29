@@ -27,6 +27,7 @@ require_once __DIR__ . '/routes/ExamRoutes.php';
 require_once __DIR__ . '/routes/LeaveRoutes.php';
 require_once __DIR__ . '/routes/EventRoutes.php';
 require_once __DIR__ . '/routes/FeedbackRoutes.php';
+require_once __DIR__ . '/routes/ResultRoutes.php';
 require_once __DIR__ . '/routes/InterviewBankRoutes.php';
 
 
@@ -89,6 +90,9 @@ switch ($endpoint) {
         break;
     case 'Announcement':
         AnnouncementRoutes($method, $subpath);
+        break;
+    case 'Result':
+        ResultRoutes($method, $subpath);
         break;
     default:
         http_response_code(404);

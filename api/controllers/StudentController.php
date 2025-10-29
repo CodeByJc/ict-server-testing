@@ -59,13 +59,13 @@ function StudentLogoutController($input) {
  * Search Student Details by Faculty
  */
 function StudentDetailsController($input) {
-    if (!isset($input['enrolment'])) {
+    if (!isset($input['student_id'])) {
         http_response_code(400);
-        echo json_encode(['message' => 'Enrolment required']);
+        echo json_encode(['message' => 'student_id required']);
         return;
     }
 
-    $enrolment = $input['enrolment'];
+    $enrolment = $input['student_id'];
     $response = searchStudentByFaculty($enrolment);
 
     if ($response['status']) {

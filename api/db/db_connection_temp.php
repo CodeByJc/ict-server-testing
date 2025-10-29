@@ -2,7 +2,7 @@
 $hostname = "localhost"; 
 $username = "root";
 $password = "";
-$dbname = "ictmu";
+$dbname = "jc_ictmu";
 
 $conn = new mysqli($hostname, $username, $password, $dbname);
 
