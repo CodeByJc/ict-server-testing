@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         $sql = "SELECT id, subject_name, short_name, subject_code, lec_type, CAST(is_creditable AS UNSIGNED) AS is_creditable
-                FROM subject_info WHERE sem_info_id = ? ORDER BY subject_name";
+                FROM subject_info WHERE sem_info_id = ? and type = 'mandatory' ORDER BY subject_name";
         $stmt = $conn->prepare($sql);
         if (!$stmt) {
             echo json_encode(['status' => 'error', 'message' => 'DB prepare error: ' . $conn->error]);

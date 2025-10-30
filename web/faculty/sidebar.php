@@ -91,6 +91,15 @@ $color = "cyan";
                         </li>
                         <?php if ($userdata['designation'] === 'hod'): ?>
                         <li>
+                            <a href="manage_faculty.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Manage Faculty
+                                </div>
+                            </a>
+                        </li>
+                        <?php endif; ?>
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
                             <a href="manage_batches.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
                                     Manage Batches
@@ -140,6 +149,16 @@ $color = "cyan";
                             <a href="subject_allocation.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
                                     Manage Subject Allocation
+                                </div>
+                            </a>
+                        </li>
+                        
+                        <?php endif; ?>
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
+                            <a href="elective_subject_faculty_allocation.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Elective Subject Faculty Allocation
                                 </div>
                             </a>
                         </li>
@@ -204,7 +223,15 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        
+                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <li>
+                            <a href="upload_results.php">
+                                <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
+                                    Upload Sem Results
+                                </div>
+                            </a>
+                        </li>
+                        <?php endif; ?>
                         <?php if ($userdata['designation'] === 'hod'): ?>
                         <li>
                             <a href="landing_projects.php">
