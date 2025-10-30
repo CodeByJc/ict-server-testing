@@ -76,6 +76,23 @@ function StudentDetailsController($input) {
     }
 }
 
+function GetSubjectListController($input) {
+    if (!isset($input['sem_info_id'])) {
+            http_response_code(400);
+            echo json_encode(['message' => 'sem_info_id required']);
+            return;
+    }
+    $sem_info_id = $input['sem_info_id'];
+
+    $response = getSubjectListService($sem_info_id);
+    if ($response['status']) {
+        echo json_encode($response['data']);
+    } else {
+        http_response_code(500);
+        echo json_encode(['message' => $response['message']]);
+    }
+}
+
 function FetchSocialLinksController($input) {
     // Accepts 'username' from payload and maps to service's expected 'studentEnr'
     if (!isset($input['username'])) {

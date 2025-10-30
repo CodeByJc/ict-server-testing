@@ -37,6 +37,14 @@ function StudentRoutes($method, $subpath) {
                 echo json_encode(['message' => 'Method not allowed']);
             }
             break;
+        case 'FetchSubjectList':
+            if ($method === 'POST') {
+                GetSubjectListController($input);
+            } else {
+                http_response_code(405);
+                echo json_encode(['message' => 'Method not allowed']);
+            }
+            break;
         // --- New Section: Social Links ---
         case 'FetchSocialLink':
             if ($method === 'POST') {

@@ -84,6 +84,29 @@ function StudentLoginService($username, $password, $device_token) {
 }
 
 
+function GetSubjectListService($sem_info_id) {
+    global $conn;
+
+    $stmt = $conn->prepare("SELECT si.id AS subject_id, si.subject_name, si.subject_code
+                            FROM subject_info si
+                            WHERE sem_info_id = ?");
+    if (!$stmt) {
+        return ['status' => false, 'message' => 'Failed to prepare query'];
+    }
+
+    $stmt->bind_param("i", $sem_info_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $subjects = [];
+    while ($row = $result->fetch_assoc()) {
+        $subjects[] = $row;
+    }
+
+    $stmt->close();
+    return ['status' => true, 'data' => ['subjects' => $subjects]];
+}
+
 function searchStudentByFaculty($studentId) {
     global $conn;
 
