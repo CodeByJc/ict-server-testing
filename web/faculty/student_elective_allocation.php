@@ -1,17 +1,57 @@
 <?php
+// student_elective_allocation.php
+// Simple elective allocation (no class). Stores rows into elective_allocation:
+// (id, student_info_id, subject_info_id, sem_info_id).
+//
+// Workflow implemented:
+// 1) Select semester -> loads elective subjects for that semester
+// 2) Select subject -> list students of that semester and show allocation status
+// 3) Add student -> INSERT INTO elective_allocation (student_info_id, subject_info_id, sem_info_id)
+// 4) Remove student -> DELETE FROM elective_allocation WHERE id = ?
+//
+// Place this file in your faculty/admin folder. Requires ../../api/db/db_connection.php providing $conn (mysqli).
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 include('../../api/db/db_connection.php');
+if (!$conn) {
+    http_response_code(500);
+    die(json_encode(['status' => 'error', 'message' => 'Database connection failed']));
+}
+
+function fetch_all_stmt($stmt) {
+    $rows = [];
+    if (function_exists('mysqli_stmt_get_result')) {
+        $res = mysqli_stmt_get_result($stmt);
+        if ($res !== false) {
+            while ($r = mysqli_fetch_assoc($res)) $rows[] = $r;
+        }
+    } else {
+        $meta = mysqli_stmt_result_metadata($stmt);
+        if ($meta) {
+            $fields = [];
+            $row = [];
+            while ($f = mysqli_fetch_field($meta)) $fields[] = &$row[$f->name];
+            mysqli_free_result($meta);
+            call_user_func_array([$stmt, 'bind_result'], $fields);
+            while (mysqli_stmt_fetch($stmt)) {
+                $rec = [];
+                foreach ($row as $k => $v) $rec[$k] = $v;
+                $rows[] = $rec;
+            }
+        }
+    }
+    return $rows;
+}
 
 // Handle AJAX requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    header('Content-Type: application/json');
+    header('Content-Type: application/json; charset=utf-8');
+    $action = trim($_POST['action']);
 
-    $action = $_POST['action'];
-
-    // Fetch elective subjects for a semester
+    // 1) fetch_subjects by semester
     if ($action === 'fetch_subjects') {
         $sem_id = isset($_POST['sem_info_id']) ? intval($_POST['sem_info_id']) : 0;
         if ($sem_id <= 0) {
@@ -19,26 +59,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
 
-        $query = "SELECT id, subject_name 
-                  FROM subject_info 
-                  WHERE sem_info_id = ? AND type = 'elective' 
-                  ORDER BY subject_name";
-        $stmt = mysqli_prepare($conn, $query);
+        $sql = "SELECT id, subject_name FROM subject_info WHERE sem_info_id = ? AND `type` = 'elective' ORDER BY subject_name";
+        $stmt = mysqli_prepare($conn, $sql);
         mysqli_stmt_bind_param($stmt, 'i', $sem_id);
         mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $subjects = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $subjects[] = $row;
-        }
+        $subjects = fetch_all_stmt($stmt);
+        mysqli_stmt_close($stmt);
 
         echo json_encode(['status' => 'success', 'subjects' => $subjects]);
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
         exit;
     }
 
-    // Fetch students allocated to an elective subject
+    // 2) fetch_students: list all students of that semester and include allocation info (ea.id)
     if ($action === 'fetch_students') {
         $sem_id = isset($_POST['sem_info_id']) ? intval($_POST['sem_info_id']) : 0;
         $subject_id = isset($_POST['subject_info_id']) ? intval($_POST['subject_info_id']) : 0;
@@ -47,55 +79,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
 
-        $query = "SELECT si.id, si.first_name, si.last_name, si.gr_no, si.enrollment_no, ea.class_info_id, ci.classname, ci.batch 
-                  FROM student_info si 
-                  INNER JOIN elective_allocation ea ON si.id = ea.student_info_id 
-                  LEFT JOIN class_info ci ON ea.class_info_id = ci.id 
-                  WHERE si.sem_info_id = ? AND ea.subject_info_id = ? 
-                  ORDER BY si.enrollment_no";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'ii', $sem_id, $subject_id);
+        // Left join elective_allocation to detect existing allocation for the subject.
+        $sql = "
+            SELECT
+                si.id,
+                si.first_name,
+                si.last_name,
+                si.gr_no,
+                si.enrollment_no,
+                ea.id AS allocation_id,
+                ea.sem_info_id AS allocation_sem_info_id,
+                ea.subject_info_id AS allocation_subject_info_id
+            FROM student_info si
+            LEFT JOIN elective_allocation ea
+                ON si.id = ea.student_info_id AND ea.subject_info_id = ?
+            WHERE si.sem_info_id = ?
+            ORDER BY si.enrollment_no
+        ";
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) { echo json_encode(['status' => 'error', 'message' => 'DB prepare failed']); exit; }
+        mysqli_stmt_bind_param($stmt, 'ii', $subject_id, $sem_id);
         mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $students = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $students[] = $row;
-        }
+        $students = fetch_all_stmt($stmt);
+        mysqli_stmt_close($stmt);
 
         echo json_encode(['status' => 'success', 'students' => $students]);
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
         exit;
     }
 
-    // Fetch classes for an elective subject
-    if ($action === 'fetch_classes') {
-        $subject_id = isset($_POST['subject_info_id']) ? intval($_POST['subject_info_id']) : 0;
-        if ($subject_id <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid subject ID']);
-            exit;
-        }
-
-        $query = "SELECT id, classname, batch 
-                  FROM class_info 
-                  WHERE elective_subject_id = ? 
-                  ORDER BY classname, batch";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'i', $subject_id);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $classes = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $classes[] = $row;
-        }
-
-        echo json_encode(['status' => 'success', 'classes' => $classes]);
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
-        exit;
-    }
-
-    // Fetch available students (not allocated to the subject)
+    // 3) fetch_available_students: students in sem not yet allocated to this subject
     if ($action === 'fetch_available_students') {
         $sem_id = isset($_POST['sem_info_id']) ? intval($_POST['sem_info_id']) : 0;
         $subject_id = isset($_POST['subject_info_id']) ? intval($_POST['subject_info_id']) : 0;
@@ -104,638 +116,283 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
 
-        $query = "SELECT si.id, si.first_name, si.last_name 
-                  FROM student_info si 
-                  WHERE si.sem_info_id = ? 
-                  AND si.id NOT IN (
-                      SELECT student_info_id 
-                      FROM elective_allocation 
-                      WHERE subject_info_id = ?
-                  ) 
-                  ORDER BY si.first_name, si.last_name";
-        $stmt = mysqli_prepare($conn, $query);
+        $sql = "
+            SELECT si.id, si.first_name, si.last_name, si.enrollment_no
+            FROM student_info si
+            WHERE si.sem_info_id = ?
+              AND si.id NOT IN (
+                  SELECT student_info_id FROM elective_allocation WHERE subject_info_id = ?
+              )
+            ORDER BY si.first_name, si.last_name
+        ";
+        $stmt = mysqli_prepare($conn, $sql);
         mysqli_stmt_bind_param($stmt, 'ii', $sem_id, $subject_id);
         mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $students = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $students[] = $row;
-        }
+        $students = fetch_all_stmt($stmt);
+        mysqli_stmt_close($stmt);
 
         echo json_encode(['status' => 'success', 'students' => $students]);
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
         exit;
     }
 
-    // Add a student to an elective
+    // 4) add_student: insert allocation WITHOUT class (store sem_info_id)
     if ($action === 'add_student') {
         $student_id = isset($_POST['student_id']) ? intval($_POST['student_id']) : 0;
         $subject_id = isset($_POST['subject_info_id']) ? intval($_POST['subject_info_id']) : 0;
-        $class_id = isset($_POST['class_id']) ? intval($_POST['class_id']) : null;
+        $sem_id = isset($_POST['sem_info_id']) ? intval($_POST['sem_info_id']) : 0;
 
-        if ($student_id <= 0 || $subject_id <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid student or subject ID']);
+        if ($student_id <= 0 || $subject_id <= 0 || $sem_id <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid student, subject or semester ID']);
             exit;
         }
 
-        if (!$class_id) {
-            $query = "INSERT INTO elective_allocation (student_info_id, subject_info_id) 
-                      VALUES (?, ?)";
-            $stmt = mysqli_prepare($conn, $query);
-            mysqli_stmt_bind_param($stmt, 'ii', $student_id, $subject_id);
-        } else {
-            $query = "INSERT INTO elective_allocation (student_info_id, subject_info_id, class_info_id) 
-                      VALUES (?, ?, ?)";
-            $stmt = mysqli_prepare($conn, $query);
-            mysqli_stmt_bind_param($stmt, 'iii', $student_id, $subject_id, $class_id);
+        // prevent duplicate
+        $check = "SELECT id FROM elective_allocation WHERE student_info_id = ? AND subject_info_id = ? LIMIT 1";
+        $cstmt = mysqli_prepare($conn, $check);
+        mysqli_stmt_bind_param($cstmt, 'ii', $student_id, $subject_id);
+        mysqli_stmt_execute($cstmt);
+        mysqli_stmt_store_result($cstmt);
+        if (mysqli_stmt_num_rows($cstmt) > 0) {
+            mysqli_stmt_close($cstmt);
+            echo json_encode(['status' => 'error', 'message' => 'Student already allocated to this subject']);
+            exit;
         }
+        mysqli_stmt_close($cstmt);
 
-        $success = mysqli_stmt_execute($stmt);
+        $ins = "INSERT INTO elective_allocation (student_info_id, subject_info_id, sem_info_id) VALUES (?, ?, ?)";
+        $istmt = mysqli_prepare($conn, $ins);
+        if (!$istmt) { echo json_encode(['status' => 'error', 'message' => 'DB prepare failed']); exit; }
+        mysqli_stmt_bind_param($istmt, 'iii', $student_id, $subject_id, $sem_id);
+        $ok = mysqli_stmt_execute($istmt);
+        $err = $ok ? '' : mysqli_stmt_error($istmt);
+        mysqli_stmt_close($istmt);
 
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
-
-        if ($success) {
-            echo json_encode(['status' => 'success', 'message' => 'Student added successfully']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Failed to add student']);
-        }
+        echo $ok ? json_encode(['status' => 'success', 'message' => 'Student allocated to subject']) : json_encode(['status' => 'error', 'message' => 'Failed to allocate: ' . $err]);
         exit;
     }
 
-    // Delete a student from an elective
+    // 5) delete_student: remove row from elective_allocation by student+subject or allocation id
     if ($action === 'delete_student') {
         $student_id = isset($_POST['student_id']) ? intval($_POST['student_id']) : 0;
         $subject_id = isset($_POST['subject_info_id']) ? intval($_POST['subject_info_id']) : 0;
-        if ($student_id <= 0 || $subject_id <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid student or subject ID']);
-            exit;
-        }
+        // allow deleting by allocation_id optionally
+        $allocation_id = isset($_POST['allocation_id']) ? intval($_POST['allocation_id']) : 0;
 
-        $query = "DELETE FROM elective_allocation 
-                  WHERE student_info_id = ? AND subject_info_id = ?";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'ii', $student_id, $subject_id);
-        $success = mysqli_stmt_execute($stmt);
-
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
-
-        if ($success) {
-            echo json_encode(['status' => 'success', 'message' => 'Student removed successfully']);
+        if ($allocation_id > 0) {
+            $del = "DELETE FROM elective_allocation WHERE id = ?";
+            $dstmt = mysqli_prepare($conn, $del);
+            mysqli_stmt_bind_param($dstmt, 'i', $allocation_id);
         } else {
-            echo json_encode(['status' => 'error', 'message' => 'Failed to remove student or student not found']);
-        }
-        exit;
-    }
-
-    // Save class allocations
-    if ($action === 'save_allocations') {
-        $allocations = isset($_POST['allocations']) ? json_decode($_POST['allocations'], true) : [];
-        if (empty($allocations)) {
-            echo json_encode(['status' => 'error', 'message' => 'No allocations provided']);
-            exit;
-        }
-
-        $success_count = 0;
-        $query = "UPDATE elective_allocation SET class_info_id = ? 
-                  WHERE student_info_id = ? AND subject_info_id = ?";
-        $stmt = mysqli_prepare($conn, $query);
-
-        foreach ($allocations as $alloc) {
-            $student_id = intval($alloc['student_id']);
-            $subject_id = intval($alloc['subject_info_id']);
-            $class_id = !empty($alloc['class_id']) ? intval($alloc['class_id']) : null;
-
-            mysqli_stmt_bind_param($stmt, 'iii', $class_id, $student_id, $subject_id);
-            if (mysqli_stmt_execute($stmt)) {
-                $success_count++;
+            if ($student_id <= 0 || $subject_id <= 0) {
+                echo json_encode(['status' => 'error', 'message' => 'Invalid student or subject ID']);
+                exit;
             }
+            $del = "DELETE FROM elective_allocation WHERE student_info_id = ? AND subject_info_id = ?";
+            $dstmt = mysqli_prepare($conn, $del);
+            mysqli_stmt_bind_param($dstmt, 'ii', $student_id, $subject_id);
         }
 
-        mysqli_stmt_close($stmt);
-        mysqli_close($conn);
+        $ok = mysqli_stmt_execute($dstmt);
+        $err = $ok ? '' : mysqli_stmt_error($dstmt);
+        mysqli_stmt_close($dstmt);
 
-        if ($success_count === count($allocations)) {
-            echo json_encode(['status' => 'success', 'message' => 'All allocations saved successfully']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Some allocations failed to save']);
-        }
+        echo $ok ? json_encode(['status' => 'success', 'message' => 'Allocation removed']) : json_encode(['status' => 'error', 'message' => 'Failed to remove: ' . $err]);
         exit;
     }
 
     echo json_encode(['status' => 'error', 'message' => 'Invalid action']);
     exit;
 }
+
+// If GET, render the UI
 ?>
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Elective Allocation</title>
-    <link rel="icon" type="image/png" href="../assets/images/favicon.png">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <style>
-        #student-table {
-            border-collapse: collapse;
-        }
-        #student-table th,
-        #student-table td {
-            text-align: center;
-            border: 1px solid #d1d5db;
-            /* gray-300 */
-        }
-        #student-table th {
-            background-color: #374151;
-            /* gray-700 */
-            color: #ffffff;
-            /* white */
-        }
-        #student-table tbody tr:hover {
-            background-color: #f9fafb;
-            /* gray-50 */
-        }
-        select.class-dropdown {
-            width: 150px;
-            padding: 4px;
-            border-radius: 4px;
-            border: 1px solid #d1d5db;
-        }
-    </style>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Elective Allocation (student -> subject)</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<style>
+  #student-table th, #student-table td { text-align:center; border:1px solid #d1d5db; }
+  #student-table th { background:#374151; color:#fff; }
+</style>
 </head>
-
 <body class="bg-gray-100 text-gray-800 flex h-screen overflow-hidden">
-    <?php include('./sidebar.php'); ?>
-    <div class="main-content pl-64 flex-1 ml-1/6 overflow-y-auto">
-        <?php
-        $page_title = "Student Elective Allocation";
-        include('./navbar.php');
-        ?>
-        <div class="container mx-auto p-6">
-            <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-                <div class="flex flex-col md:flex-row md:space-x-4">
-                    <div class="w-full md:w-1/3 mb-4 md:mb-0">
-                        <label for="semester" class="block text-gray-700 font-bold mb-2">Semester & Program</label>
-                        <select id="semester" name="semester" class="w-full p-3 border-2 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:outline-none">
-                            <option value="" disabled selected>Select Semester & Program</option>
-                            <?php
-                            $sem_query = "SELECT id, sem, edu_type FROM sem_info ORDER BY edu_type, sem";
-                            $sem_result = mysqli_query($conn, $sem_query);
-                            while ($row = mysqli_fetch_assoc($sem_result)) {
-                                echo "<option value='{$row['id']}'>SEM {$row['sem']} - " . strtoupper($row['edu_type']) . "</option>";
-                            }
-                            mysqli_close($conn);
-                            ?>
-                        </select>
-                    </div>
-                    <div class="w-full md:w-1/3">
-                        <label for="elective-subject" class="block text-gray-700 font-bold mb-2">Elective Subject</label>
-                        <select id="elective-subject" name="elective-subject" class="w-full p-3 border-2 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:outline-none" disabled>
-                            <option value="" disabled selected>Select Elective Subject</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="p-6 bg-white rounded-xl shadow-md">
-                <div class="flex justify-between items-center mb-6">
-                    <div class="flex space-x-4">
-                        <button id="save-btn" class="bg-cyan-500 shadow-md hover:shadow-xl px-6 text-white p-2 rounded-full hover:bg-cyan-600 transition-all" disabled>Save Changes</button>
-                        <button id="add-student-btn" class="bg-green-500 shadow-md hover:shadow-xl px-6 text-white p-2 rounded-full hover:bg-green-600 transition-all" disabled>Add Student</button>
-                    </div>
-                    <input type="text" id="search-student" class="w-64 p-2 border-2 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:outline-none" placeholder="Search student name...">
-                </div>
-                <table id="student-table" class="min-w-full bg-white shadow-lg rounded-md border border-gray-300">
-                    <thead>
-                        <tr class="bg-gray-700 text-white">
-                            <th class="border px-4 py-2 rounded-tl-md">No</th>
-                            <th class="border px-4 py-2">Student Name</th>
-                            <th class="border px-4 py-2">Enrollment No</th>
-                            <th class="border px-4 py-2">GR No</th>
-                            <th class="border px-4 py-2">Elective Class</th>
-                            <th class="border px-4 py-2 rounded-tr-md">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
+<?php include('./sidebar.php'); ?>
+<div class="main-content pl-64 flex-1 ml-1/6 overflow-y-auto">
+<?php $page_title = "Student Elective Allocation"; include('./navbar.php'); ?>
+
+<div class="container mx-auto p-6">
+  <div class="bg-white p-6 rounded-xl shadow-md mb-6">
+    <div class="flex flex-col md:flex-row md:space-x-4">
+      <div class="w-full md:w-1/3">
+        <label class="block font-semibold mb-2">Semester & Program</label>
+        <select id="semester" class="w-full p-3 border-2 rounded-xl">
+          <option value="" disabled selected>Select Semester & Program</option>
+          <?php
+          $sem_q = "SELECT id, sem, edu_type FROM sem_info ORDER BY edu_type, sem";
+          $sem_r = mysqli_query($conn, $sem_q);
+          while ($s = mysqli_fetch_assoc($sem_r)) {
+            echo "<option value='{$s['id']}'>SEM {$s['sem']} - " . strtoupper($s['edu_type']) . "</option>";
+          }
+          ?>
+        </select>
+      </div>
+
+      <div class="w-full md:w-1/3">
+        <label class="block font-semibold mb-2">Elective Subject</label>
+        <select id="elective-subject" class="w-full p-3 border-2 rounded-xl" disabled>
+          <option value="" disabled selected>Select Elective Subject</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="p-6 bg-white rounded-xl shadow-md">
+    <div class="flex justify-between items-center mb-6">
+      <div class="flex space-x-4">
+        <button id="add-student-btn" class="bg-green-500 text-white px-6 py-2 rounded-full" disabled>Add Student</button>
+      </div>
+      <input id="search-student" class="w-64 p-2 border-2 rounded-xl" placeholder="Search student name...">
     </div>
 
-    <script>
-        $(document).ready(function() {
-            let selectedSemId = '';
-            let selectedSubjectId = '';
-            let classes = [];
-            let changedAllocations = {};
+    <table id="student-table" class="min-w-full bg-white">
+      <thead>
+        <tr class="bg-gray-700 text-white">
+          <th>No</th>
+          <th>Student Name</th>
+          <th>Enrollment No</th>
+          <th>GR No</th>
+          <th>Allocated</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+</div>
 
-            const table = $('#student-table').DataTable({
-                paging: false,
-                info: false,
-                searching: false,
-                ordering: false,
-                language: {
-                    emptyTable: 'Please select a semester and elective subject to view students'
-                },
-                columns: [
-                    { data: 'no' },
-                    { data: 'student_name' },
-                    { data: 'enrollment_no' },
-                    { data: 'gr_no' },
-                    { data: 'class' },
-                    { 
-                        data: null,
-                        render: function(data, type, row) {
-                            return `<button class="delete-btn text-red-500 transition-all" data-student-id="${row.student_id}" data-subject-id="${selectedSubjectId}" title="Remove Student">
-                                        Delete
-                                    </button>`;
-                        }
-                    }
-                ]
-            });
+<script>
+$(function(){
+  let semId = null;
+  let subjectId = null;
 
-            // Debug: Log column headers
-            console.log('Column headers:', table.columns().header().toArray().map(h => $(h).text()));
+  const table = $('#student-table').DataTable({
+    paging:false, info:false, searching:false, ordering:false,
+    columns:[
+      { data:'no' },
+      { data:'student_name' },
+      { data:'enrollment_no' },
+      { data:'gr_no' },
+      { data:'allocated' },
+      { data:'action_html' }
+    ]
+  });
 
-            // Real-time search for student name
-            function bindSearch() {
-                $('#search-student').off('input').on('input', function() {
-                    const searchValue = $(this).val();
-                    console.log('Search value:', searchValue);
-                    table.column(1).search(searchValue, false, true).draw();
-                    console.log('Filtered rows:', table.rows({ search: 'applied' }).data().toArray());
-                });
-            }
-            bindSearch();
+  // load elective subjects on semester change
+  $('#semester').on('change', function(){
+    semId = $(this).val();
+    subjectId = null;
+    $('#elective-subject').prop('disabled', true).empty().append('<option disabled selected>Loading...</option>');
+    $('#add-student-btn').prop('disabled', true);
+    table.clear().draw();
 
-            // Semester change: Load elective subjects
-            $('#semester').change(function() {
-                selectedSemId = $(this).val();
-                selectedSubjectId = '';
-                $('#elective-subject').prop('disabled', true).val('');
-                $('#add-student-btn').prop('disabled', true);
-                table.clear().draw();
-                $('#save-btn').prop('disabled', true);
-                changedAllocations = {};
-                $('#search-student').val('');
-                table.column(1).search('').draw();
+    if (!semId) return;
 
-                if (selectedSemId) {
-                    $.ajax({
-                        url: 'student_elective_allocation.php',
-                        method: 'POST',
-                        data: { action: 'fetch_subjects', sem_info_id: selectedSemId },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.status === 'success') {
-                                $('#elective-subject').empty().append('<option value="" disabled selected>Select Elective Subject</option>');
-                                if (response.subjects.length > 0) {
-                                    response.subjects.forEach(subject => {
-                                        $('#elective-subject').append(`<option value="${subject.id}">${subject.subject_name}</option>`);
-                                    });
-                                    $('#elective-subject').prop('disabled', false);
-                                } else {
-                                    Swal.fire('Info', 'No elective subjects found for this semester.', 'info');
-                                }
-                            } else {
-                                Swal.fire('Error', response.message || 'Failed to load elective subjects.', 'error');
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            console.error('fetch_subjects AJAX error:', status, error, 'Response:', xhr.responseText);
-                            Swal.fire('Error', 'Failed to load elective subjects. Check the console for details.', 'error');
-                        }
-                    });
-                }
-            });
+    $.post('', { action:'fetch_subjects', sem_info_id: semId }, function(resp){
+      if (!resp || resp.status !== 'success') { Swal.fire('Error', resp?.message || 'Failed to load subjects','error'); return; }
+      $('#elective-subject').empty().append('<option disabled selected>Select Elective Subject</option>');
+      resp.subjects.forEach(s => $('#elective-subject').append(`<option value="${s.id}">${s.subject_name}</option>`));
+      $('#elective-subject').prop('disabled', resp.subjects.length === 0);
+    }, 'json');
+  });
 
-            // Elective subject change: Load students and classes
-            $('#elective-subject').change(function() {
-                selectedSubjectId = $(this).val();
-                table.clear().draw();
-                $('#save-btn').prop('disabled', true);
-                $('#add-student-btn').prop('disabled', !selectedSubjectId);
-                changedAllocations = {};
-                $('#search-student').val('');
-                table.column(1).search('').draw();
+  // when subject selected, list students of the semester with allocation status
+  $('#elective-subject').on('change', function(){
+    subjectId = $(this).val();
+    table.clear().draw();
+    $('#add-student-btn').prop('disabled', !subjectId);
+    if (!semId || !subjectId) return;
 
-                if (selectedSubjectId) {
-                    // Fetch classes
-                    $.ajax({
-                        url: 'student_elective_allocation.php',
-                        method: 'POST',
-                        data: { action: 'fetch_classes', subject_info_id: selectedSubjectId },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.status === 'success') {
-                                classes = response.classes;
-                                // Fetch students
-                                $.ajax({
-                                    url: 'student_elective_allocation.php',
-                                    method: 'POST',
-                                    data: { 
-                                        action: 'fetch_students', 
-                                        sem_info_id: selectedSemId, 
-                                        subject_info_id: selectedSubjectId 
-                                    },
-                                    dataType: 'json',
-                                    success: function(response) {
-                                        if (response.status === 'success') {
-                                            table.clear();
-                                            if (response.students.length === 0) {
-                                                table.draw();
-                                                return;
-                                            }
+    $.post('', { action:'fetch_students', sem_info_id: semId, subject_info_id: subjectId }, function(resp){
+      if (!resp || resp.status !== 'success') { Swal.fire('Error', resp?.message || 'Failed to load students','error'); return; }
+      const rows = (resp.students || []).map((s,i) => ({
+        no: i+1,
+        student_name: `${s.first_name || ''} ${s.last_name || ''}`,
+        enrollment_no: s.enrollment_no || '',
+        gr_no: s.gr_no || '',
+        allocated: s.allocation_id ? '<span class="text-green-600">YES</span>' : '<span class="text-gray-600">NO</span>',
+        action_html: s.allocation_id
+          ? `<button class="remove-btn text-red-500" data-allocation-id="${s.allocation_id}" data-student-id="${s.id}">Remove</button>`
+          : `<button class="allocate-btn text-blue-600" data-student-id="${s.id}">Allocate</button>`
+      }));
+      table.clear().rows.add(rows).draw();
+    }, 'json');
+  });
 
-                                            const rows = response.students.map((student, index) => {
-                                                let classOptions = '<option value="">Select Class</option>';
-                                                classes.forEach(cls => {
-                                                    const selected = cls.id == student.class_info_id ? 'selected' : '';
-                                                    classOptions += `<option value="${cls.id}" ${selected}>${cls.classname} - ${cls.batch.toUpperCase()}</option>`;
-                                                });
+  // allocate from inline button
+  $('#student-table').on('click', '.allocate-btn', function(){
+    const sid = $(this).data('student-id');
+    if (!sid || !subjectId || !semId) return;
+    $.post('', { action:'add_student', student_id: sid, subject_info_id: subjectId, sem_info_id: semId }, function(resp){
+      if (resp && resp.status === 'success') {
+        Swal.fire('Added','Student allocated to subject','success').then(()=> $('#elective-subject').trigger('change'));
+      } else {
+        Swal.fire('Error', resp?.message || 'Failed to allocate','error');
+      }
+    }, 'json');
+  });
 
-                                                return {
-                                                    no: index + 1,
-                                                    student_id: student.id,
-                                                    student_name: `${student.first_name} ${student.last_name}`,
-                                                    enrollment_no: student.enrollment_no,
-                                                    gr_no: student.gr_no,
-                                                    class: `<select class="class-dropdown" data-student-id="${student.id}" data-subject-id="${selectedSubjectId}" data-original-class="${student.class_info_id || ''}">
-                                                                ${classOptions}
-                                                            </select>`
-                                                };
-                                            });
-                                            table.rows.add(rows).draw();
-                                            console.log('Table data:', table.rows().data().toArray());
+  // allocate via Add Student popup (select from available students)
+  $('#add-student-btn').on('click', function(){
+    if (!semId || !subjectId) return;
+    $.post('', { action:'fetch_available_students', sem_info_id: semId, subject_info_id: subjectId }, function(resp){
+      if (!resp || resp.status !== 'success') { Swal.fire('Error','Failed to load available students','error'); return; }
+      const students = resp.students || [];
+      if (!students.length) { Swal.fire('Info','No available students','info'); return; }
+      let opts = '<option value="" disabled selected>Select Student</option>';
+      students.forEach(s => opts += `<option value="${s.id}">${s.first_name} ${s.last_name}</option>`);
+      Swal.fire({
+        title: 'Allocate Student',
+        html: `<select id="popup-student" class="w-full p-2 border">${opts}</select>`,
+        showCancelButton: true,
+        preConfirm: () => {
+          const sid = $('#popup-student').val();
+          if (!sid) { Swal.showValidationMessage('Select a student'); return false; }
+          return sid;
+        }
+      }).then(result => {
+        if (!result.isConfirmed) return;
+        $.post('', { action:'add_student', student_id: result.value, subject_info_id: subjectId, sem_info_id: semId }, function(r){
+          if (r && r.status === 'success') Swal.fire('Added','Student allocated','success').then(()=> $('#elective-subject').trigger('change'));
+          else Swal.fire('Error', r?.message || 'Failed to add','error');
+        }, 'json');
+      });
+    }, 'json');
+  });
 
-                                            bindSearch();
+  // remove allocation (either by allocation_id or student+subject)
+  $('#student-table').on('click', '.remove-btn', function(){
+    const allocationId = $(this).data('allocation-id');
+    const studentId = $(this).data('student-id');
+    Swal.fire({ title:'Confirm', text:'Remove allocation?', icon:'warning', showCancelButton:true, confirmButtonText:'Yes' })
+      .then(res => {
+        if (!res.isConfirmed) return;
+        $.post('', allocationId ? { action:'delete_student', allocation_id: allocationId } : { action:'delete_student', student_id: studentId, subject_info_id: subjectId }, function(r){
+          if (r && r.status === 'success') Swal.fire('Removed','Allocation removed','success').then(()=> $('#elective-subject').trigger('change'));
+          else Swal.fire('Error', r?.message || 'Failed to remove','error');
+        }, 'json');
+      });
+  });
 
-                                            // Track changes in class dropdowns
-                                            $('.class-dropdown').on('change', function() {
-                                                const studentId = $(this).data('student-id');
-                                                const subjectId = $(this).data('subject-id');
-                                                const newClassId = $(this).val();
-                                                const originalClassId = $(this).data('original-class');
-
-                                                if (newClassId !== originalClassId) {
-                                                    changedAllocations[`${studentId}_${subjectId}`] = {
-                                                        student_id: studentId,
-                                                        subject_info_id: subjectId,
-                                                        class_id: newClassId || null
-                                                    };
-                                                } else {
-                                                    delete changedAllocations[`${studentId}_${subjectId}`];
-                                                }
-
-                                                $('#save-btn').prop('disabled', Object.keys(changedAllocations).length === 0);
-                                            });
-
-                                            // Handle delete button click
-                                            $('.delete-btn').on('click', function() {
-                                                const studentId = $(this).data('student-id');
-                                                const subjectId = $(this).data('subject-id');
-                                                const studentName = table.row($(this).closest('tr')).data().student_name;
-
-                                                Swal.fire({
-                                                    title: 'Are you sure?',
-                                                    text: `Do you want to remove ${studentName} from this elective?`,
-                                                    icon: 'warning',
-                                                    showCancelButton: true,
-                                                    confirmButtonText: 'Yes, remove',
-                                                    cancelButtonText: 'No',
-                                                    confirmButtonColor: '#06b6d4',
-                                                    cancelButtonColor: '#6b7280'
-                                                }).then((result) => {
-                                                    if (result.isConfirmed) {
-                                                        $.ajax({
-                                                            url: 'student_elective_allocation.php',
-                                                            method: 'POST',
-                                                            data: {
-                                                                action: 'delete_student',
-                                                                student_id: studentId,
-                                                                subject_info_id: subjectId
-                                                            },
-                                                            dataType: 'json',
-                                                            success: function(response) {
-                                                                if (response.status === 'success') {
-                                                                    Swal.fire('Success', response.message, 'success').then(() => {
-                                                                        $('#elective-subject').trigger('change');
-                                                                    });
-                                                                } else {
-                                                                    Swal.fire('Error', response.message || 'Failed to remove student.', 'error');
-                                                                }
-                                                            },
-                                                            error: function(xhr, status, error) {
-                                                                console.error('delete_student AJAX error:', status, error, 'Response:', xhr.responseText);
-                                                                Swal.fire('Error', 'Failed to remove student. Check the console for details.', 'error');
-                                                            }
-                                                        });
-                                                    }
-                                                });
-                                            });
-                                        } else {
-                                            Swal.fire('Error', response.message || 'Failed to load students.', 'error');
-                                        }
-                                    },
-                                    error: function(xhr, status, error) {
-                                        console.error('fetch_students AJAX error:', status, error, 'Response:', xhr.responseText);
-                                        Swal.fire('Error', 'Failed to load students. Check the console for details.', 'error');
-                                    }
-                                });
-                            } else {
-                                Swal.fire('Error', response.message || 'Failed to load classes.', 'error');
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            console.error('fetch_classes AJAX error:', status, error, 'Response:', xhr.responseText);
-                            Swal.fire('Error', 'Failed to load classes. Check the console for details.', 'error');
-                        }
-                    });
-                }
-            });
-
-            // Add student pop-up
-            $('#add-student-btn').click(function() {
-                $.ajax({
-                    url: 'student_elective_allocation.php',
-                    method: 'POST',
-                    data: { 
-                        action: 'fetch_available_students', 
-                        sem_info_id: selectedSemId, 
-                        subject_info_id: selectedSubjectId 
-                    },
-                    dataType: 'json',
-                    success: function(response) {
-                        if (response.status === 'success') {
-                            if (response.students.length === 0) {
-                                Swal.fire('Info', 'No available students to add for this elective.', 'info');
-                                return;
-                            }
-
-                            let studentOptions = '<option value="" disabled selected>Select Student</option>';
-                            response.students.forEach(student => {
-                                studentOptions += `<option value="${student.id}">${student.first_name} ${student.last_name}</option>`;
-                            });
-
-                            // Fetch classes for the subject
-                            $.ajax({
-                                url: 'student_elective_allocation.php',
-                                method: 'POST',
-                                data: { action: 'fetch_classes', subject_info_id: selectedSubjectId },
-                                dataType: 'json',
-                                success: function(classResponse) {
-                                    if (classResponse.status === 'success') {
-                                        let popupHtml = `
-                                            <div class="text-left">
-                                                <label for="student-select" class="block text-gray-700 font-bold mb-2">Student</label>
-                                                <select id="student-select" class="w-full p-3 border-2 rounded-xl mb-4">
-                                                    ${studentOptions}
-                                                </select>
-                                        `;
-                                        let hasClasses = classResponse.classes.length > 0;
-                                        let classOptions = '';
-
-                                        if (hasClasses) {
-                                            classOptions = '<option value="" disabled selected>Select Class</option>';
-                                            classResponse.classes.forEach(cls => {
-                                                classOptions += `<option value="${cls.id}">${cls.classname} - ${cls.batch.toUpperCase()}</option>`;
-                                            });
-                                            popupHtml += `
-                                                <label for="class-select" class="block text-gray-700 font-bold mb-2">Class</label>
-                                                <select id="class-select" class="w-full p-3 border-2 rounded-xl">
-                                                    ${classOptions}
-                                                </select>
-                                            `;
-                                        }
-                                        popupHtml += `</div>`;
-
-                                        Swal.fire({
-                                            title: 'Add Student to Elective',
-                                            html: popupHtml,
-                                            showCancelButton: true,
-                                            confirmButtonText: 'Add',
-                                            cancelButtonText: 'Cancel',
-                                            confirmButtonColor: '#06b6d4',
-                                            cancelButtonColor: '#6b7280',
-                                            preConfirm: () => {
-                                                const studentId = $('#student-select').val();
-                                                const classId = hasClasses ? $('#class-select').val() : null;
-                                                if (!studentId) {
-                                                    Swal.showValidationMessage('Please select a student.');
-                                                    return false;
-                                                }
-                                                if (hasClasses && !classId) {
-                                                    Swal.showValidationMessage('Please select a class.');
-                                                    return false;
-                                                }
-                                                return { studentId, classId };
-                                            }
-                                        }).then((result) => {
-                                            if (result.isConfirmed) {
-                                                $.ajax({
-                                                    url: 'student_elective_allocation.php',
-                                                    method: 'POST',
-                                                    data: {
-                                                        action: 'add_student',
-                                                        student_id: result.value.studentId,
-                                                        subject_info_id: selectedSubjectId,
-                                                        class_id: result.value.classId
-                                                    },
-                                                    dataType: 'json',
-                                                    success: function(response) {
-                                                        if (response.status === 'success') {
-                                                            Swal.fire('Success', response.message, 'success').then(() => {
-                                                                $('#elective-subject').trigger('change');
-                                                            });
-                                                        } else {
-                                                            Swal.fire('Error', response.message || 'Failed to add student.', 'error');
-                                                        }
-                                                    },
-                                                    error: function(xhr, status, error) {
-                                                        console.error('add_student AJAX error:', status, error, 'Response:', xhr.responseText);
-                                                        Swal.fire('Error', 'Failed to add student. Check the console for details.', 'error');
-                                                    }
-                                                });
-                                            }
-                                        });
-                                    } else {
-                                        Swal.fire('Error', classResponse.message || 'Failed to load classes.', 'error');
-                                    }
-                                },
-                                error: function(xhr, status, error) {
-                                    console.error('fetch_classes AJAX error:', status, error, 'Response:', xhr.responseText);
-                                    Swal.fire('Error', 'Failed to load classes for pop-up. Check the console for details.', 'error');
-                                }
-                            });
-                        } else {
-                            Swal.fire('Error', response.message || 'Failed to load available students.', 'error');
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('fetch_available_students AJAX error:', status, error, 'Response:', xhr.responseText);
-                        Swal.fire('Error', 'Failed to load available students. Check the console for details.', 'error');
-                    }
-                });
-            });
-
-            // Save changes with confirmation
-            $('#save-btn').click(function() {
-                const allocations = Object.values(changedAllocations);
-                if (allocations.length === 0) {
-                    Swal.fire('Info', 'No changes to save.', 'info');
-                    return;
-                }
-
-                Swal.fire({
-                    title: 'Are you sure?',
-                    text: 'Do you want to save the class allocations?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes',
-                    cancelButtonText: 'No',
-                    confirmButtonColor: '#06b6d4',
-                    cancelButtonColor: '#6b7280'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        $.ajax({
-                            url: 'student_elective_allocation.php',
-                            method: 'POST',
-                            data: {
-                                action: 'save_allocations',
-                                allocations: JSON.stringify(allocations)
-                            },
-                            dataType: 'json',
-                            success: function(response) {
-                                if (response.status === 'success') {
-                                    Swal.fire({
-                                        title: 'Success!',
-                                        text: response.message,
-                                        icon: 'success'
-                                    }).then(() => {
-                                        $('#elective-subject').trigger('change');
-                                    });
-                                } else {
-                                    Swal.fire('Error', response.message || 'Failed to save allocations.', 'error');
-                                }
-                            },
-                            error: function(xhr, status, error) {
-                                console.error('save_allocations AJAX error:', status, error, 'Response:', xhr.responseText);
-                                Swal.fire('Error', 'Failed to save allocations. Check the console for details.', 'error');
-                            }
-                        });
-                    }
-                });
-            });
-        });
-    </script>
+  $('#search-student').on('input', function(){ table.column(1).search(this.value, false, true).draw(); });
+});
+</script>
 </body>
-
 </html>
