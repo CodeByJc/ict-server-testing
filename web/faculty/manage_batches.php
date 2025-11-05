@@ -28,7 +28,7 @@ if (!isset($_SESSION['image_url'])) {
 }
 
 // Fetch all batches
-$stmt = $conn->prepare("SELECT id, batch_start_year, batch_end_year FROM batch_info ORDER BY batch_start_year ASC");
+$stmt = $conn->prepare("SELECT id, batch_start_year, batch_end_year, edu_type FROM batch_info ORDER BY batch_start_year ASC");
 $stmt->execute();
 $result = $stmt->get_result();
 $batches = $result->fetch_all(MYSQLI_ASSOC);
@@ -65,8 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     // Check for duplicate
-    $stmt = $conn->prepare("SELECT id FROM batch_info WHERE batch_start_year = ? AND batch_end_year = ?");
-    $stmt->bind_param("ss", $start_year, $end_year);
+    $stmt = $conn->prepare("SELECT id FROM batch_info WHERE batch_start_year = ? AND batch_end_year = ? AND edu_type = ?");
+    $stmt->bind_param("sss", $start_year, $end_year, $edu_type);
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
@@ -76,8 +76,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     // Insert batch
     try {
-        $stmt = $conn->prepare("INSERT INTO batch_info (batch_start_year, batch_end_year) VALUES (?, ?)");
-        $stmt->bind_param("ss", $start_year, $end_year);
+        $stmt = $conn->prepare("INSERT INTO batch_info (batch_start_year, batch_end_year,edu_type) VALUES (?, ?, ?)");
+        $stmt->bind_param("sss", $start_year, $end_year, $edu_type);
         $stmt->execute();
         echo json_encode(['status' => 'success', 'message' => 'Batch added successfully.']);
     } catch (Exception $e) {
@@ -158,7 +158,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             <tr class="bg-gray-700 text-white">
                                 <th class="border px-4 py-2 rounded-tl-md">Batch ID</th>
                                 <th class="border px-4 py-2">Start Year</th>
-                                <th class="border px-4 py-2 rounded-tr-md">End Year</th>
+                                <th class="border px-4 py-2">End Year</th>
+                                <th class="border px-4 py-2 rounded-tr-md">Edu Type</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -167,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                     <td class="border px-4 py-2"><?php echo htmlspecialchars($batch['id']); ?></td>
                                     <td class="border px-4 py-2"><?php echo htmlspecialchars($batch['batch_start_year']); ?></td>
                                     <td class="border px-4 py-2"><?php echo htmlspecialchars($batch['batch_end_year']); ?></td>
+                                    <td class="border px-4 py-2"><?php echo htmlspecialchars($batch['edu_type']); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

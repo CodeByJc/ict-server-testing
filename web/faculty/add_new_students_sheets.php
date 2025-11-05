@@ -348,7 +348,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $mentor_db_id = null;
             if (!empty($student['mentotr_id'])) {
                 $mfac = trim($student['mentotr_id']);
-                $stmt = $conn->prepare("SELECT id FROM faculty_info WHERE faculty_id = ?");
+                $stmt = $conn->prepare("SELECT id FROM faculty_info WHERE user_login_id = ?");
                 $stmt->bind_param("s", $mfac);
                 $stmt->execute();
                 $res = $stmt->get_result();

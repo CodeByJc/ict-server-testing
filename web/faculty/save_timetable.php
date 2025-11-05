@@ -1,42 +1,79 @@
 <?php
 include('../../api/db/db_connection.php');
-$sem_id = $_POST['sem_id'];
-$class_id = $_POST['class_id'];
-$slots = json_decode($_POST['slots'], true);
+header('Content-Type: application/json;');
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT); // helpful during dev
 
-$response = ['status' => 'success', 'message' => ''];
+$response = ['status' => 'error', 'message' => 'Unknown error'];
 
 try {
+    // --- Read and decode raw JSON ---
+    $raw = file_get_contents('php://input');
+    $input = json_decode($raw, true);
+
+    if (!is_array($input)) {
+        throw new Exception('Invalid JSON body');
+    }
+
+    // --- Validate input ---
+    $sem_id   = isset($input['sem_id']) ? intval($input['sem_id']) : 0;
+    $class_id = isset($input['class_id']) ? intval($input['class_id']) : 0;
+    $slots    = $input['slots'] ?? [];
+
+    if ($sem_id <= 0 || $class_id <= 0 || empty($slots)) {
+        echo json_encode(['status' => 'error', 'message' => 'Missing sem_id, class_id, or slots']);
+        exit;
+    }
+
     $conn->begin_transaction();
 
-    // Insert new slots
-    $insert_query = "INSERT INTO time_table (day, subject_info_id, faculty_info_id, class_info_id, class_location_info_id, sem_info_id, start_time, end_time, lec_type) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    $insert_stmt = $conn->prepare($insert_query);
+    // --- Prepare insert query once ---
+    $insert_query = "
+        INSERT INTO time_table 
+            (day, subject_info_id, faculty_info_id, class_info_id, class_location_info_id, sem_info_id, start_time, end_time, lec_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $stmt = $conn->prepare($insert_query);
 
     foreach ($slots as $day => $day_slots) {
         foreach ($day_slots as $slot) {
-            $insert_stmt->bind_param('siiiissss', 
-                $day, 
-                $slot['subject_id'], 
-                $slot['faculty_id'], 
-                $slot['class_id'], 
-                $slot['location_id'], 
-                $sem_id, 
-                $slot['start_time'], 
-                $slot['end_time'], 
-                $slot['lec_type']
+            $day          = trim($day);
+            $subject_id   = intval($slot['subject_id'] ?? 0);
+            $faculty_id   = intval($slot['faculty_id'] ?? 0);
+            $slot_class   = intval($slot['class_id'] ?? $class_id);
+            $location_id  = intval($slot['location_id'] ?? 0);
+            $start_time   = trim($slot['start_time'] ?? '');
+            $end_time     = trim($slot['end_time'] ?? '');
+            $lec_type     = trim($slot['lec_type'] ?? '');
+
+            if (!$day || !$subject_id || !$faculty_id || !$start_time || !$end_time) {
+                throw new Exception("Missing required fields in slot for day $day");
+            }
+
+            $stmt->bind_param(
+                'siiiissss',
+                $day,
+                $subject_id,
+                $faculty_id,
+                $slot_class,
+                $location_id,
+                $sem_id,
+                $start_time,
+                $end_time,
+                $lec_type
             );
-            $insert_stmt->execute();
+            $stmt->execute();
         }
     }
 
     $conn->commit();
-    $response['message'] = 'Timetable saved successfully';
+    $response = ['status' => 'success', 'message' => 'Timetable saved successfully'];
+
 } catch (Exception $e) {
-    $conn->rollback();
+    if ($conn && $conn->errno === 0) {
+        $conn->rollback();
+    }
     $response = ['status' => 'error', 'message' => 'Error saving timetable: ' . $e->getMessage()];
 }
 
 echo json_encode($response);
+exit;
 ?>

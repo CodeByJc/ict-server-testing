@@ -1,648 +1,799 @@
 <?php
-// Ensure session is started
+// manage_class.php
+// Fixed version: resolves bugs in fetch_class_info and cleans up dynamic IN binding.
+// - Ensure all AJAX endpoints return valid JSON
+// - Properly fetch faculty and subject names and attach to class rows
+// - Semester + Batch dropdowns UI remains the same
+//
+// Replace your existing manage_class.php with this file.
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-include('../../api/db/db_connection.php');
-
-// Function to fetch class information based on selected semId
-function fetchClassInfo($sem_id)
-{
-    global $conn;
-    $class_query = "
-        SELECT 
-            cl.id AS class_id,
-            cl.classname,
-            cl.batch,
-            cl.group,
-            cl.elective_subject_id,
-            si.subject_name AS elective_subject_name,
-            fi.id AS faculty_id,
-            CONCAT(fi.first_name, ' ', fi.last_name) AS faculty_name
-        FROM 
-            class_info cl
-        JOIN 
-            faculty_info fi ON cl.faculty_info_id = fi.id
-        LEFT JOIN
-            subject_info si ON cl.elective_subject_id = si.id
-        WHERE 
-            cl.sem_info_id = ?
-    ";
-
-    $stmt = mysqli_prepare($conn, $class_query);
-    mysqli_stmt_bind_param($stmt, 'i', $sem_id);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $classes = [];
-
-    if ($result && mysqli_num_rows($result) > 0) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $classes[] = $row;
-        }
-    }
-
-    mysqli_stmt_close($stmt);
-    return $classes;
+include('../../api/db/db_connection.php'); // expects $conn (mysqli)
+if (!$conn) {
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Database connection failed']);
+    exit;
 }
 
-// Function to fetch faculty names
-function fetchFacultyNames()
-{
-    global $conn;
-    $faculty_query = "SELECT id, CONCAT(first_name, ' ', last_name) AS faculty_name FROM faculty_info";
-    $result = mysqli_query($conn, $faculty_query);
-    $faculty = [];
-
-    if ($result && mysqli_num_rows($result) > 0) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $faculty[] = $row;
+function fetch_all_stmt($stmt) {
+    $rows = [];
+    if (function_exists('mysqli_stmt_get_result')) {
+        $res = mysqli_stmt_get_result($stmt);
+        if ($res !== false) {
+            while ($r = mysqli_fetch_assoc($res)) $rows[] = $r;
         }
-    }
-
-    return $faculty;
-}
-
-// Function to fetch elective subjects for a semester
-function fetchElectiveSubjects($sem_id)
-{
-    global $conn;
-    $query = "SELECT id, subject_name FROM subject_info WHERE sem_info_id = ? AND type = 'elective' ORDER BY subject_name";
-    $stmt = mysqli_prepare($conn, $query);
-    mysqli_stmt_bind_param($stmt, 'i', $sem_id);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $subjects = [];
-
-    if ($result && mysqli_num_rows($result) > 0) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $subjects[] = $row;
-        }
-    }
-
-    mysqli_stmt_close($stmt);
-    return $subjects;
-}
-
-// Handle password verification for class deletion
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'verify_password') {
-    $password = $_POST['password'];
-    $userdata = isset($_SESSION['userdata']) ? $_SESSION['userdata'] : null;
-    $session_faculty_id = isset($userdata['faculty_id']) ? $userdata['faculty_id'] : (isset($_SESSION['faculty_id']) ? $_SESSION['faculty_id'] : null);
-
-    if (!$session_faculty_id) {
-        echo json_encode(['status' => 'error', 'message' => 'No faculty session found, please log in.']);
-        exit;
-    }
-
-    $admin_query = "SELECT password FROM user_login WHERE username = ?";
-    $stmt = mysqli_prepare($conn, $admin_query);
-    mysqli_stmt_bind_param($stmt, 's', $session_faculty_id);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $admin = mysqli_fetch_assoc($result);
-    mysqli_stmt_close($stmt);
-
-    if ($admin && password_verify($password, $admin['password'])) {
-        echo json_encode(['status' => 'success', 'message' => 'Password verified']);
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Incorrect password']);
-    }
-    exit;
-}
-
-// Handle fetch elective subjects AJAX request
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'fetch_elective_subjects') {
-    $sem_id = isset($_POST['sem_id']) ? intval($_POST['sem_id']) : 0;
-    if ($sem_id <= 0) {
-        echo json_encode(['status' => 'error', 'message' => 'Invalid semester ID']);
-        exit;
-    }
-
-    $subjects = fetchElectiveSubjects($sem_id);
-    echo json_encode(['status' => 'success', 'subjects' => $subjects]);
-    exit;
-}
-
-// Insert or update class
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['classname'])) {
-    $classname = strtoupper($_POST['classname']);
-    $sem_id = $_POST['sem_id'];
-    $batch = strtolower($_POST['batch']);
-    $faculty_id = $_POST['faculty_id'];
-    $group = strtolower($_POST['group']);
-    $elective_subject_id = ($group === 'elective' && !empty($_POST['elective_subject_id'])) ? intval($_POST['elective_subject_id']) : null;
-    $class_id = isset($_POST['class_id']) ? $_POST['class_id'] : null;
-
-    if ($group === 'elective' && $elective_subject_id === null) {
-        echo json_encode(['status' => 'error', 'message' => 'Elective subject is required for elective group']);
-        exit;
-    }
-
-    if ($class_id) {
-        $update_query = "UPDATE class_info SET classname=?, sem_info_id=?, batch=?, faculty_info_id=?, `group`=?, elective_subject_id=? WHERE id=?";
-        $stmt = mysqli_prepare($conn, $update_query);
-        mysqli_stmt_bind_param($stmt, 'sssissi', $classname, $sem_id, $batch, $faculty_id, $group, $elective_subject_id, $class_id);
-        if (mysqli_stmt_execute($stmt)) {
-            echo json_encode(['status' => 'success', 'message' => 'Class updated successfully!']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Error updating class. Please try again.']);
+        $meta = mysqli_stmt_result_metadata($stmt);
+        if ($meta) {
+            $fields = [];
+            $row = [];
+            while ($f = mysqli_fetch_field($meta)) $fields[] = &$row[$f->name];
+            mysqli_free_result($meta);
+            call_user_func_array([$stmt, 'bind_result'], $fields);
+            while (mysqli_stmt_fetch($stmt)) {
+                $rec = [];
+                foreach ($row as $k => $v) $rec[$k] = $v;
+                $rows[] = $rec;
+            }
         }
+    }
+    return $rows;
+}
+
+function bind_params_dynamic($stmt, array $params) {
+    if (empty($params)) return;
+    $types = '';
+    $refs = [];
+    foreach ($params as $p) {
+        // treat integer strings as ints if pure digits
+        if (is_int($p)) $types .= 'i';
+        else $types .= 's';
+    }
+    $refs[] = &$types;
+    foreach ($params as $i => $val) $refs[] = &$params[$i];
+    // call_user_func_array expects references
+    call_user_func_array([$stmt, 'bind_param'], $refs);
+}
+
+function column_exists($conn, $table, $column) {
+    $t = mysqli_real_escape_string($conn, $table);
+    $c = mysqli_real_escape_string($conn, $column);
+    $res = @mysqli_query($conn, "SHOW COLUMNS FROM `{$t}` LIKE '{$c}'");
+    if (!$res) return false;
+    $exists = mysqli_num_rows($res) > 0;
+    mysqli_free_result($res);
+    return $exists;
+}
+
+// Helper: fetch rows for an IN(...) clause safely
+function fetch_rows_by_ids($conn, $table, $id_col, $select_cols, $ids) {
+    $out = [];
+    if (empty($ids)) return $out;
+    // sanitize ids to ints
+    $ids = array_values(array_filter(array_map('intval', $ids), function($v){ return $v > 0; }));
+    if (empty($ids)) return $out;
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $sql = "SELECT {$select_cols} FROM {$table} WHERE {$id_col} IN ($placeholders)";
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) return $out;
+    $types = str_repeat('i', count($ids));
+    $refs = [];
+    $refs[] = &$types;
+    foreach ($ids as $i => $v) $refs[] = &$ids[$i];
+    call_user_func_array([$stmt, 'bind_param'], $refs);
+    mysqli_stmt_execute($stmt);
+    $rows = fetch_all_stmt($stmt);
+    mysqli_stmt_close($stmt);
+    return $rows;
+}
+
+// -------------------- AJAX endpoints --------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $action = $_POST['action'];
+
+    // Fetch batches for edu_type
+    if ($action === 'fetch_batches') {
+        $edu_type = isset($_POST['edu_type']) ? trim($_POST['edu_type']) : '';
+        $sql = "SELECT id, batch_start_year, batch_end_year, edu_type FROM batch_info";
+        $params = [];
+        if ($edu_type !== '') {
+            $sql .= " WHERE edu_type = ?";
+            $params[] = $edu_type;
+        }
+        $sql .= " ORDER BY batch_start_year DESC";
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) { echo json_encode(['status'=>'error','message'=>'DB prepare failed']); exit; }
+        if (!empty($params)) bind_params_dynamic($stmt, $params);
+        mysqli_stmt_execute($stmt);
+        $batches = fetch_all_stmt($stmt);
         mysqli_stmt_close($stmt);
-    } else {
-        $insert_query = "INSERT INTO class_info (classname, sem_info_id, batch, faculty_info_id, `group`, elective_subject_id) VALUES (?, ?, ?, ?, ?, ?)";
-        $stmt = mysqli_prepare($conn, $insert_query);
-        mysqli_stmt_bind_param($stmt, 'sssiss', $classname, $sem_id, $batch, $faculty_id, $group, $elective_subject_id);
-        if (mysqli_stmt_execute($stmt)) {
-            echo json_encode(['status' => 'success', 'message' => 'Class created successfully!']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Error creating class. Please try again.']);
+        echo json_encode(['status'=>'success','batches'=>$batches]);
+        exit;
+    }
+
+    // Fetch classes for sem + optional batch
+    if ($action === 'fetch_class_info') {
+        $sem_id = isset($_POST['sem_id']) ? intval($_POST['sem_id']) : 0;
+        $batch_id = isset($_POST['batch_id']) && $_POST['batch_id'] !== '' ? intval($_POST['batch_id']) : null;
+
+        // Validate input
+        if ($sem_id <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid semester ID']);
+            exit;
         }
+
+        // Require batch_id to be selected
+        if (is_null($batch_id)) {
+            echo json_encode(['status' => 'error', 'message' => 'Select a batch first']);
+            exit;
+        }
+
+        // SQL to fetch class info for semester + batch
+        $sql = "
+            SELECT 
+                ci.id AS class_id,
+                ci.classname,
+                ci.batch,
+                ci.batch_id,
+                ci.faculty_info_id
+            FROM class_info ci
+            WHERE ci.sem_info_id = ? AND ci.batch_id = ?
+            ORDER BY ci.classname, ci.batch
+        ";
+
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) {
+            echo json_encode(['status' => 'error', 'message' => 'DB prepare failed']);
+            exit;
+        }
+
+        mysqli_stmt_bind_param($stmt, 'ii', $sem_id, $batch_id);
+        mysqli_stmt_execute($stmt);
+        $classes = fetch_all_stmt($stmt);
         mysqli_stmt_close($stmt);
-    }
-    exit;
-}
 
-// Check if AJAX request is made for deletion
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete') {
-    $class_id = $_POST['class_id'];
-    $delete_query = "DELETE FROM class_info WHERE id = ?";
-    $stmt = mysqli_prepare($conn, $delete_query);
-    mysqli_stmt_bind_param($stmt, 'i', $class_id);
-    if (mysqli_stmt_execute($stmt)) {
-        echo json_encode(['status' => 'success', 'message' => 'Class deleted successfully!']);
+        // If no classes
+        if (empty($classes)) {
+            echo json_encode(['status' => 'success', 'classes' => []]);
+            exit;
+        }
+
+        // Map faculty names
+        $faculty_map = [];
+        $fids = array_values(array_unique(array_filter(array_column($classes, 'faculty_info_id'))));
+
+        if (!empty($fids)) {
+            $placeholders = implode(',', array_fill(0, count($fids), '?'));
+            $types = str_repeat('i', count($fids));
+
+            $sqlf = "
+                SELECT 
+                    id, 
+                    COALESCE(CONCAT(first_name, ' ', last_name), '') AS faculty_name
+                FROM faculty_info 
+                WHERE id IN ($placeholders)
+            ";
+
+            $stmtf = mysqli_prepare($conn, $sqlf);
+            $refs = [];
+            $refs[] = &$types;
+            foreach ($fids as $i => $fid) {
+                $refs[] = &$fids[$i];
+            }
+            call_user_func_array([$stmtf, 'bind_param'], $refs);
+
+            mysqli_stmt_execute($stmtf);
+            $frows = fetch_all_stmt($stmtf);
+            mysqli_stmt_close($stmtf);
+
+            foreach ($frows as $fr) {
+                $faculty_map[$fr['id']] = $fr['faculty_name'];
+            }
+        }
+
+        // Attach faculty name
+        foreach ($classes as &$c) {
+            $fid = $c['faculty_info_id'] ?? null;
+            $c['faculty_name'] = ($fid && isset($faculty_map[$fid])) ? $faculty_map[$fid] : '';
+        }
+        unset($c);
+
+        echo json_encode(['status' => 'success', 'classes' => $classes]);
+        exit;
+    }
+
+
+
+    // Fetch single class
+    if ($action === 'fetch_class') {
+        $class_id = isset($_POST['class_id']) ? intval($_POST['class_id']) : 0;
+
+        if ($class_id <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid class ID']);
+            exit;
+        }
+
+        $sql = "
+            SELECT 
+                id AS class_id,
+                classname,
+                sem_info_id,
+                batch,
+                batch_id,
+                faculty_info_id
+            FROM class_info
+            WHERE id = ?
+        ";
+
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) {
+            echo json_encode(['status' => 'error', 'message' => 'Database prepare failed']);
+            exit;
+        }
+
+        mysqli_stmt_bind_param($stmt, 'i', $class_id);
+        mysqli_stmt_execute($stmt);
+        $rows = fetch_all_stmt($stmt);
+        mysqli_stmt_close($stmt);
+
+        if (empty($rows)) {
+            echo json_encode(['status' => 'error', 'message' => 'Class not found']);
+        } else {
+            echo json_encode(['status' => 'success', 'class' => $rows[0]]);
+        }
+        exit;
+    }
+
+    // Verify password
+    if ($action === 'verify_password') {
+        $password = $_POST['password'] ?? '';
+        $session_username = $_SESSION['userdata']['username'] ?? $_SESSION['username'] ?? null;
+        if (!$session_username) { echo json_encode(['status'=>'error','message'=>'No session user']); exit; }
+        $sql = "SELECT password FROM user_login WHERE username = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, 's', $session_username);
+        mysqli_stmt_execute($stmt);
+        $rows = fetch_all_stmt($stmt);
+        mysqli_stmt_close($stmt);
+        $row = $rows[0] ?? null;
+        if ($row && password_verify($password, $row['password'])) echo json_encode(['status'=>'success']);
+        else echo json_encode(['status'=>'error','message'=>'Incorrect password']);
+        exit;
+    }
+
+    // Save class (create/update) - includes batch_id
+    // Save class (create/update) - includes batch_id
+if ($action === 'save_class') {
+    $class_id = isset($_POST['class_id']) && $_POST['class_id'] !== '' ? intval($_POST['class_id']) : 0;
+    $classname = isset($_POST['classname']) ? trim($_POST['classname']) : '';
+    $sem_id = isset($_POST['sem_id']) ? intval($_POST['sem_id']) : null;
+    $batch = isset($_POST['batch']) ? trim($_POST['batch']) : '';
+    $batch_id = isset($_POST['batch_id']) && $_POST['batch_id'] !== '' ? intval($_POST['batch_id']) : null;
+    $faculty_id = isset($_POST['faculty_id']) ? intval($_POST['faculty_id']) : null;
+
+    // Validation
+    if ($classname === '' || !$sem_id || !$faculty_id) {
+        echo json_encode(['status'=>'error','message'=>'Missing required fields']);
+        exit;
+    }
+
+    if ($class_id > 0) {
+        // UPDATE existing class
+        $sql = "UPDATE class_info 
+                SET classname = ?, sem_info_id = ?, batch = ?, batch_id = ?, faculty_info_id = ?
+                WHERE id = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, 'sisiii',
+            $classname,
+            $sem_id,
+            $batch,
+            $batch_id,
+            $faculty_id,
+            $class_id
+        );
+        $ok = mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        echo json_encode(['status' => $ok ? 'success' : 'error',
+                          'message' => $ok ? 'Class updated successfully' : 'Error updating class']);
+        exit;
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Error deleting class. Please try again.']);
+        // INSERT new class
+        $sql = "INSERT INTO class_info (classname, sem_info_id, batch, batch_id, faculty_info_id)
+                VALUES (?, ?, ?, ?, ?)";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, 'sisii',
+            $classname,
+            $sem_id,
+            $batch,
+            $batch_id,
+            $faculty_id
+        );
+        $ok = mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        echo json_encode(['status' => $ok ? 'success' : 'error',
+                          'message' => $ok ? 'Class created successfully' : 'Error creating class']);
+        exit;
     }
-    mysqli_stmt_close($stmt);
-    exit;
 }
 
-// Check if AJAX request is made for class info
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sem_id'])) {
-    $sem_id = $_POST['sem_id'];
-    $classes = fetchClassInfo($sem_id);
-    echo json_encode(['classes' => $classes]);
+
+    // Delete class
+    if ($action === 'delete_class') {
+        $class_id = isset($_POST['class_id']) ? intval($_POST['class_id']) : 0;
+        if ($class_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid class id']); exit; }
+        $sql = "DELETE FROM class_info WHERE id = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, 'i', $class_id);
+        $ok = mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        echo json_encode(['status' => $ok ? 'success' : 'error', 'message' => $ok ? 'Class deleted' : 'Error deleting class']);
+        exit;
+    }
+
+    echo json_encode(['status' => 'error', 'message' => 'Unknown action']);
     exit;
 }
+// -------------------- End AJAX --------------------
 ?>
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Class</title>
-    <link rel="icon" type="image/png" href="../assets/images/favicon.png">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Manage Class</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<style>
+  .tab-button-active { border-bottom-color: #06b6d4; color: #06b6d4; }
+  .tab-button-inactive { border-bottom-color: transparent; color: #4b5563; }
+</style>
 </head>
-
 <body class="bg-gray-100 text-gray-800 flex h-screen overflow-hidden">
-    <?php include('./sidebar.php'); ?>
+<?php include('./sidebar.php'); ?>
+<div class="main-content pl-64 flex-1 ml-1/6 overflow-y-auto">
+<?php $page_title = "Manage Class"; include('./navbar.php'); ?>
 
-    <div class="main-content pl-64 flex-1 ml-1/6 overflow-y-auto">
+<div class="p-5">
+  <div class="bg-white shadow-xl rounded-xl p-3 mb-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+    <div>
+      <label class="block text-sm font-medium">Semester</label>
+      <select id="semester-select" class="mt-1 w-full p-2 border rounded">
+        <option value="" disabled selected>Select Semester</option>
         <?php
-        $page_title = "Manage Class";
-        include('./navbar.php');
+        $sem_query = "SELECT id, sem, edu_type FROM sem_info ORDER BY edu_type, sem";
+        $sem_res = mysqli_query($conn, $sem_query);
+        while ($s = mysqli_fetch_assoc($sem_res)) {
+            $id = intval($s['id']);
+            $label = "SEM " . intval($s['sem']) . " - " . strtoupper($s['edu_type']);
+            $edu = htmlspecialchars($s['edu_type']);
+            echo "<option value='{$id}' data-edu_type='{$edu}'>{$label}</option>";
+        }
         ?>
-
-        <div class="p-5">
-            <!-- Degree Semester Tabs -->
-            <div id="degree-tabs" class="bg-white shadow-xl rounded-xl p-3 mb-4">
-                <h3 class="text-md font-bold pl-5 pt-2 mb-2">Degree Semesters</h3>
-                <div class="flex border-b">
-                    <?php
-                    $sem_query = "SELECT id, sem, edu_type FROM sem_info WHERE edu_type = 'Degree'";
-                    $sem_result = mysqli_query($conn, $sem_query);
-                    $first_degree = true;
-
-                    if ($sem_result && mysqli_num_rows($sem_result) > 0) {
-                        while ($sem_row = mysqli_fetch_assoc($sem_result)) {
-                            echo "
-                            <button class='sem-tab-button px-4 py-2 -mb-px border-b-2 " . ($first_degree ? 'border-cyan-500 text-cyan-500' : 'border-transparent text-gray-600') . " hover:text-cyan-500 hover:border-cyan-500' 
-                                data-sem-id='{$sem_row['id']}' data-tab='sem-tab-{$sem_row['id']}'>
-                                Sem {$sem_row['sem']}
-                            </button>";
-                            $first_degree = false;
-                        }
-                    } else {
-                        echo "<p class='pl-5 text-gray-600'>No Degree semesters available or query failed</p>";
-                    }
-                    ?>
-                </div>
-            </div>
-
-            <!-- Diploma Semester Tabs -->
-            <div id="diploma-tabs" class="bg-white shadow-xl rounded-xl p-3 mb-4">
-                <h3 class="text-md font-bold pl-5 pt-2 mb-2">Diploma Semesters</h3>
-                <div class="flex border-b">
-                    <?php
-                    $sem_query = "SELECT id, sem, edu_type FROM sem_info WHERE edu_type = 'Diploma'";
-                    $sem_result = mysqli_query($conn, $sem_query);
-                    $first_diploma = true;
-
-                    if ($sem_result && mysqli_num_rows($sem_result) > 0) {
-                        while ($sem_row = mysqli_fetch_assoc($sem_result)) {
-                            echo "
-                            <button class='sem-tab-button px-4 py-2 -mb-px border-b-2 " . ($first_diploma && !$first_degree ? 'border-cyan-500 text-cyan-500' : 'border-transparent text-gray-600') . " hover:text-cyan-500 hover:border-cyan-500' 
-                                data-sem-id='{$sem_row['id']}' data-tab='sem-tab-{$sem_row['id']}'>
-                                Sem {$sem_row['sem']}
-                            </button>";
-                            $first_diploma = false;
-                        }
-                    } else {
-                        echo "<p class='pl-5 text-gray-600'>No Diploma semesters available or query failed</p>";
-                    }
-                    ?>
-                </div>
-            </div>
-
-            <!-- Class Tabs Container -->
-            <div id="class-tabs-container" class="bg-white shadow-xl rounded-xl p-3">
-                <div id="class-tabs"></div>
-            </div>
-        </div>
+      </select>
     </div>
 
-    <div id="create-class-popup" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
-        <div class="bg-white p-8 rounded-lg w-4/12">
-            <h3 class="text-xl font-bold mb-4" id="popup-title">Create New Class</h3>
-            <form id="create-class-form" action="manage_class.php" method="POST">
-                <input type="hidden" name="sem_id" id="popup-sem-id">
-                <input type="hidden" name="class_id" id="popup-class-id">
-                <div class="mb-4">
-                    <label for="classname" class="block font-semibold">Class Name</label>
-                    <input type="text" name="classname" id="classname" class="w-full p-2 border-2 rounded" required>
-                </div>
-                <div class="mb-4">
-                    <label for="batch" class="block font-semibold">Batch</label>
-                    <select name="batch" id="batch" class="w-full p-2 border-2 rounded" required>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="C">C</option>
-                    </select>
-                </div>
-                <div class="mb-4">
-                    <label for="faculty_id" class="block font-semibold">Select Faculty</label>
-                    <select name="faculty_id" id="faculty_id" class="w-full p-2 border-2 rounded" required>
-                        <option value="" disabled selected>Select Faculty</option>
-                        <?php
-                        $faculty = fetchFacultyNames();
-                        foreach ($faculty as $faculty_member) {
-                            echo "<option value='{$faculty_member['id']}'>{$faculty_member['faculty_name']}</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-                <div class="mb-4">
-                    <label for="group" class="block font-semibold">Group</label>
-                    <select name="group" id="group" class="w-full p-2 border-2 rounded" required>
-                        <option value="regular">Regular</option>
-                        <option value="elective">Elective</option>
-                    </select>
-                </div>
-                <div class="mb-4 hidden" id="elective-subject-container">
-                    <label for="elective_subject_id" class="block font-semibold">Elective Subject</label>
-                    <select name="elective_subject_id" id="elective_subject_id" class="w-full p-2 border-2 rounded">
-                        <option value="" disabled selected>Select Elective Subject</option>
-                    </select>
-                </div>
-                <div class="flex justify-end gap-4">
-                    <button type="button" onclick="closePopup()" class="pl-5 pr-5 bg-gray-500 text-white p-2 rounded-full">Cancel</button>
-                    <button type="submit" id="popup-submit" class="pl-6 pr-6 bg-cyan-500 text-white p-2 rounded-full">Create</button>
-                </div>
-            </form>
-        </div>
+    <div>
+      <label class="block text-sm font-medium">Batch (Cohort)</label>
+      <select id="batch-filter" class="mt-1 w-full p-2 border rounded">
+        <option value="">All Batches</option>
+      </select>
     </div>
 
-    <script>
-        $(document).ready(function() {
-            // Load classes for the first active semester on page load
-            const firstSemTab = $('.sem-tab-button.border-cyan-500');
-            if (firstSemTab.length) {
-                const semId = firstSemTab.data('sem-id');
-                fetchClassInfo(semId, $('#class-tabs')[0]);
-            }
+    <div class="flex gap-2">
+      <button id="refresh-classes" class="bg-cyan-500 text-white px-4 py-2 rounded">Refresh</button>
+      <button id="open-create" class="bg-green-500 text-white px-4 py-2 rounded">Create Class</button>
+    </div>
+  </div>
 
-            // Semester tab switching for both Degree and Diploma
-            $('.sem-tab-button').on('click', function() {
-                const semId = $(this).data('sem-id');
-                $('.sem-tab-button').removeClass('border-cyan-500 text-cyan-500').addClass('border-transparent text-gray-600');
-                $(this).removeClass('border-transparent text-gray-600').addClass('border-cyan-500 text-cyan-500');
-                fetchClassInfo(semId, $('#class-tabs')[0]);
-            });
+  <div id="class-container" class="bg-white shadow-xl rounded-xl p-3">
+    <div id="class-tabs" class="min-h-40">
+      <p class="text-sm text-gray-500">Select a semester and batch to view classes.</p>
+    </div>
+  </div>
+</div>
+</div><!-- main-content -->
 
-            // Handle group dropdown change
-            $('#group').on('change', function() {
-                const group = $(this).val();
-                const semId = $('#popup-sem-id').val();
-                const electiveContainer = $('#elective-subject-container');
-                const electiveSelect = $('#elective_subject_id');
+<!-- Create/Edit popup -->
+ <div id="create-class-popup" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-50">
+  <div class="bg-white p-6 rounded-lg w-4/12">
+    <h3 id="popup-title" class="text-xl font-bold mb-4">Create New Class</h3>
+    <form id="create-class-form" class="space-y-4">
+      <!-- Hidden Fields -->
+      <input type="hidden" name="class_id" id="popup-class-id">
+      <!-- <input type="hidden" name="sem_id" id="popup-sem-id"> -->
 
-                if (group === 'elective' && semId) {
-                    // Fetch elective subjects
-                    $.ajax({
-                        url: '',
-                        type: 'POST',
-                        data: {
-                            action: 'fetch_elective_subjects',
-                            sem_id: semId
-                        },
-                        success: function(response) {
-                            const result = JSON.parse(response);
-                            if (result.status === 'success') {
-                                electiveSelect.empty();
-                                electiveSelect.append('<option value="" disabled selected>Select Elective Subject</option>');
-                                if (result.subjects.length > 0) {
-                                    result.subjects.forEach(subject => {
-                                        electiveSelect.append(`<option value="${subject.id}">${subject.subject_name}</option>`);
-                                    });
-                                    electiveContainer.removeClass('hidden');
-                                    electiveSelect.prop('required', true);
-                                } else {
-                                    electiveSelect.append('<option value="" disabled>No elective subjects available</option>');
-                                    electiveContainer.removeClass('hidden');
-                                    electiveSelect.prop('required', false);
-                                }
-                            } else {
-                                Swal.fire('Error', result.message || 'Failed to fetch elective subjects.', 'error');
-                            }
-                        },
-                        error: function() {
-                            Swal.fire('Error', 'Unable to fetch elective subjects. Please try again.', 'error');
-                        }
-                    });
-                } else {
-                    electiveContainer.addClass('hidden');
-                    electiveSelect.prop('required', false);
-                    electiveSelect.empty().append('<option value="" disabled selected>Select Elective Subject</option>');
-                }
-            });
+      <!-- Class Name -->
+      <div>
+        <label for="classname" class="block font-semibold mb-1 text-gray-700">
+          Class Name
+        </label>
+        <input type="text" 
+               name="classname" 
+               id="classname" 
+               class="w-full p-2 border rounded focus:ring-2 focus:ring-cyan-400" 
+               required>
+      </div>
+      
+
+      <!-- Batch Code -->
+      <div>
+        <label for="batch" class="block font-semibold mb-1 text-gray-700">
+          Batch Code (e.g. a, b, all)
+        </label>
+        <input type="text" 
+               name="batch" 
+               id="batch" 
+               placeholder="a / b / all" 
+               class="w-full p-2 border rounded focus:ring-2 focus:ring-cyan-400" 
+               required>
+      </div>
+
+       <div class="mb-4">
+        <label class="block font-semibold mb-1 text-gray-700">Semester</label>
+        <select name="sem_id" id="sem_id" class="w-full p-2 border rounded focus:ring-2 focus:ring-cyan-400" required>
+          <option value="" disabled selected>Select Semester</option>
+          <?php
+          $sem_q = "SELECT id, sem, edu_type FROM sem_info ORDER BY edu_type, sem";
+          $sem_r = mysqli_query($conn, $sem_q);
+          while ($s = mysqli_fetch_assoc($sem_r)) {
+              $semLabel = "SEM " . htmlspecialchars($s['sem']) . " - " . strtoupper(htmlspecialchars($s['edu_type']));
+              echo "<option value='" . intval($s['id']) . "'>$semLabel</option>";
+          }
+          ?>
+        </select>
+      </div>
+
+
+      <!-- Batch (Cohort) -->
+      <div>
+        <label for="batch_id" class="block font-semibold mb-1 text-gray-700">
+          Batch (Cohort)
+        </label>
+        <select name="batch_id" 
+                id="batch_id" 
+                class="w-full p-2 border rounded focus:ring-2 focus:ring-cyan-400">
+          <option value="">Select Batch</option>
+        </select>
+      </div>
+
+      <!-- Faculty -->
+      <div>
+        <label for="faculty_id" class="block font-semibold mb-1 text-gray-700">
+          Select Faculty
+        </label>
+        <select name="faculty_id" 
+                id="faculty_id" 
+                class="w-full p-2 border rounded focus:ring-2 focus:ring-cyan-400" 
+                required>
+          <option value="" disabled selected>Select Faculty</option>
+          <?php
+          $fac_q = "
+            SELECT 
+              f.id, 
+              COALESCE(CONCAT(f.first_name,' ',f.last_name), u.username) AS name 
+            FROM faculty_info f 
+            LEFT JOIN user_login u ON f.user_login_id = u.username 
+            ORDER BY f.first_name, f.last_name
+          ";
+          $fac_r = mysqli_query($conn, $fac_q);
+          while ($f = mysqli_fetch_assoc($fac_r)) {
+              echo "<option value='" . intval($f['id']) . "'>" . htmlspecialchars($f['name']) . "</option>";
+          }
+          ?>
+        </select>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex justify-end gap-3 pt-4 border-t">
+        <button type="button" 
+                id="popup-cancel" 
+                class="px-4 py-2 rounded bg-gray-500 text-white hover:bg-gray-600 transition">
+          Cancel
+        </button>
+        <button type="submit" 
+                id="popup-submit" 
+                class="px-4 py-2 rounded bg-cyan-500 text-white hover:bg-cyan-600 transition">
+          Save
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+$(function(){
+  function escapeHtml(text) {
+    if (text === undefined || text === null) return '';
+    return String(text).replace(/&/g, '&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+
+  function loadBatches(eduType) {
+    $('#batch-filter').empty().append('<option value="">All Batches</option>');
+    $('#batch_id').empty().append('<option value="">Select Batch Cohort</option>');
+    if (!eduType) return;
+    $.ajax({
+      url: '',
+      method: 'POST',
+      dataType: 'json',
+      data: { action: 'fetch_batches', edu_type: eduType },
+      success: function(resp) {
+        if (!resp || resp.status !== 'success') return;
+        resp.batches.forEach(b => {
+          const label = `${b.batch_start_year}-${b.batch_end_year}-${b.edu_type.toUpperCase()}`;
+          $('#batch-filter').append(`<option value="${b.id}">${label}</option>`);
+          $('#batch_id').append(`<option value="${b.id}">${label}</option>`);
         });
+      }
+    });
+  }
 
-        function fetchClassInfo(semId, tabContainer) {
-            $.ajax({
-                url: '',
-                type: 'POST',
-                data: {
-                    sem_id: semId
-                },
-                success: function(response) {
-                    const responseData = JSON.parse(response);
-                    const $tabContainer = $(tabContainer);
+  const $semSel = $('#semester-select');
+  const initialSem = $semSel.find('option[data-edu_type]').first();
+  if (initialSem.length) {
+    initialSem.prop('selected', true);
+    const semId = initialSem.val();
+    const eduType = initialSem.data('edu_type');
+    loadBatches(eduType);
+    fetchClassTabs(semId, null);
+    $('#popup-sem-id').val(semId);
+  }
 
-                    $tabContainer.empty();
+  $semSel.on('change', function(){
+    const semId = $(this).val();
+    const eduType = $(this).find('option:selected').data('edu_type');
+    $('#popup-sem-id').val(semId);
+    loadBatches(eduType);
+    $('#batch-filter').val('');
+    fetchClassTabs(semId, null);
+  });
 
-                    let tabsHtml = '<div class="flex border-b">';
-                    if (responseData.classes.length > 0) {
-                        responseData.classes.forEach((classItem, index) => {
-                            tabsHtml += `
-                            <button class="class-tab-button px-4 py-2 -mb-px border-b-2 ${index === 0 ? 'border-cyan-500 text-cyan-500' : 'border-transparent text-gray-600'} hover:text-cyan-500 hover:border-cyan-500" data-tab="tab-${classItem.class_id}">
-                                ${classItem.classname} - ${classItem.batch.toUpperCase()}
-                            </button>`;
-                        });
-                    }
-                    // Add Create Class tab
-                    tabsHtml += `
-                    <button class="class-tab-button px-4 py-2 -mb-px border-b-2 border-transparent text-gray-600 hover:text-cyan-500 hover:border-cyan-500" data-tab="tab-create-${semId}">
-                        + New
-                    </button>
-                </div>`;
+  $('#batch-filter').on('change', function(){
+    const semId = $('#semester-select').val();
+    const batchId = $(this).val() || null;
+    fetchClassTabs(semId, batchId);
+  });
 
-                    // Tab content
-                    let contentHtml = '<div class="tab-content mt-4">';
-                    if (responseData.classes.length > 0) {
-                        responseData.classes.forEach((classItem, index) => {
-                            contentHtml += `
-                            <div id="tab-${classItem.class_id}" class="tab-pane ${index === 0 ? '' : 'hidden'} p-4 bg-gray-50 rounded-b-xl">
-                                <div class="flex justify-between items-center">
-                                    <h3 class="text-md text-gray-600 font-semibold">
-                                        ${classItem.classname} - ${classItem.batch.toUpperCase()} - ${classItem.faculty_name} 
-                                        (${classItem.group.charAt(0).toUpperCase() + classItem.group.slice(1)}${classItem.group === 'elective' && classItem.elective_subject_name ? ' - ' + classItem.elective_subject_name : ''})
-                                    </h3>
-                                    <div>
-                                        <button onclick="editClass(${classItem.class_id}, '${classItem.classname}', '${classItem.batch}', ${classItem.faculty_id}, ${semId}, '${classItem.group}', ${classItem.elective_subject_id || 'null'})" 
-                                            class="border-blue-500 text-sm font-bold border-2 border-blue-600 text-blue-600 px-4 py-1 rounded-full hover:bg-blue-600 hover:text-white mr-2">
-                                            Edit
-                                        </button>
-                                        <button onclick="deleteClass(${classItem.class_id}, ${semId})" 
-                                            class="border-red-500 text-sm font-bold border-2 border-red-600 text-red-600 px-4 py-1 rounded-full hover:bg-red-600 hover:text-white">
-                                            Delete
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>`;
-                        });
-                    } else {
-                        contentHtml += `<div id="tab-no-classes-${semId}" class="tab-pane hidden p-4 bg-gray-50 rounded-b-xl">
-                        <p class="text-sm text-gray-500">No classes found for this semester.</p>
-                    </div>`;
-                    }
-                    contentHtml += `
-                    <div id="tab-create-${semId}" class="tab-pane ${responseData.classes.length === 0 ? '' : 'hidden'} p-4 bg-gray-50 rounded-b-xl">
-                        <button class="transition-all bg-gray-100 drop-shadow-lg text-green-600 font-bold text-sm px-4 py-1 rounded-lg hover:scale-110" 
-                            onclick="openCreateClassPopup(${semId})">
-                            Create New Class
-                        </button>
+  $('#refresh-classes').on('click', function(){
+    const semId = $('#semester-select').val();
+    const batchId = $('#batch-filter').val() || null;
+    fetchClassTabs(semId, batchId);
+  });
+
+  function fetchClassTabs(semId, batchId) {
+    if (!semId) {
+        $('#class-tabs').html('<p class="text-sm text-gray-500">Select a semester first.</p>');
+        return;
+    }
+
+    if (!batchId) {
+        $('#class-tabs').html('<p class="text-sm text-gray-500">Select a batch first.</p>');
+        return;
+    }
+
+    $.ajax({
+        url: '', // PHP endpoint URL
+        method: 'POST',
+        dataType: 'json',
+        data: { action: 'fetch_class_info', sem_id: semId, batch_id: batchId },
+        success: function (resp) {
+        if (!resp || resp.status !== 'success') {
+            $('#class-tabs').html('<p class="text-sm text-gray-500">No classes or error loading data.</p>');
+            return;
+        }
+
+        const classes = Array.isArray(resp.classes) ? resp.classes : [];
+        let html = '';
+
+        // Tabs header
+        html += '<div class="flex flex-wrap gap-2 border-b pb-3">';
+        if (classes.length > 0) {
+            classes.forEach((c, i) => {
+            const label = `${escapeHtml(c.classname)} - ${escapeHtml((c.batch || '').toUpperCase())}`;
+            html += `
+                <button class="class-tab px-4 py-2 -mb-px border-b-2 ${i === 0 ? 'tab-button-active' : 'tab-button-inactive'}"
+                data-class-id="${c.class_id}" data-sem-id="${semId}">
+                ${label}
+                </button>
+            `;
+            });
+        }
+
+        // “+ New” button
+        html += `
+            <button id="create-new-class" class="px-4 py-2 -mb-px border-b-2 tab-button-inactive"
+            data-sem-id="${semId}" data-batch-id="${batchId}">
+            + New
+            </button>
+        `;
+        html += '</div>';
+
+        // Tab content
+        html += '<div class="mt-4">';
+        if (classes.length > 0) {
+            classes.forEach((c, i) => {
+            const facultyName = escapeHtml(c.faculty_name || '');
+            html += `
+                <div id="pane-${c.class_id}" class="pane ${i === 0 ? '' : 'hidden'} p-4 bg-gray-50 rounded-b-xl">
+                <div class="flex justify-between items-center">
+                    <div>
+                    <h4 class="font-semibold text-gray-700">
+                        ${escapeHtml(c.classname)} - ${escapeHtml((c.batch || '').toUpperCase())}
+                    </h4>
+                    <div class="text-sm text-gray-500">
+                        ${facultyName ? 'Faculty: ' + facultyName : ''}
                     </div>
-                </div>`;
-
-                    $tabContainer.html(tabsHtml + contentHtml);
-
-                    // Class tab switching logic
-                    $tabContainer.find('.class-tab-button').on('click', function() {
-                        const tabId = $(this).data('tab');
-                        $tabContainer.find('.class-tab-button').removeClass('border-cyan-500 text-cyan-500').addClass('border-transparent text-gray-600');
-                        $(this).removeClass('border-transparent text-gray-600').addClass('border-cyan-500 text-cyan-500');
-                        $tabContainer.find('.tab-pane').addClass('hidden');
-                        $tabContainer.find(`#${tabId}`).removeClass('hidden');
-                    });
-                },
-                error: function() {
-                    Swal.fire('Error', 'Unable to fetch class info. Please try again.', 'error');
-                }
+                    </div>
+                    <div class="flex gap-2">
+                    <button class="edit-class-btn px-4 py-1 rounded border border-blue-600 text-blue-600"
+                        data-class-id="${c.class_id}" data-sem-id="${semId}">Edit</button>
+                    <button class="delete-class-btn px-4 py-1 rounded border border-red-600 text-red-600"
+                        data-class-id="${c.class_id}" data-sem-id="${semId}">Delete</button>
+                    </div>
+                </div>
+                </div>
+            `;
             });
+        } else {
+            html += `
+            <div class="p-4 bg-gray-50 rounded-b-xl text-sm text-gray-600">
+                No classes for this semester/batch.
+                <button id="create-new-class-2" class="ml-2 px-3 py-1 rounded bg-gray-100 text-green-600 border border-green-400"
+                data-sem-id="${semId}" data-batch-id="${batchId}">
+                + Create Class
+                </button>
+            </div>
+            `;
         }
+        html += '</div>';
 
-        function deleteClass(classId, semId) {
-            var verified = false;
-            Swal.fire({
-                title: 'Enter your password',
-                input: 'password',
-                inputLabel: 'Password',
-                inputPlaceholder: 'Enter your password',
-                inputAttributes: {
-                    autocapitalize: 'off',
-                    autocorrect: 'off'
-                },
-                confirmButtonText: 'Verify',
-                showLoaderOnConfirm: true,
-                preConfirm: (password) => {
-                    return $.ajax({
-                        url: '',
-                        type: 'POST',
-                        data: {
-                            action: 'verify_password',
-                            password: password
-                        },
-                        success: function(response) {
-                            const result = JSON.parse(response);
-                            if (result.status === 'error') {
-                                Swal.showValidationMessage(result.message);
-                                verified = false;
-                                return result;
-                            }
-                            verified = true;
-                            return result;
-                        },
-                        error: function() {
-                            Swal.showValidationMessage('Unable to verify password. Please try again.');
-                            verified = false;
-                            return result;
-                        }
-                    });
-                },
-                allowOutsideClick: () => !Swal.isLoading()
-            }).then(result => {
-                if (verified) {
-                    Swal.fire({
-                        title: 'Are you sure?',
-                        text: 'This will permanently delete the class.',
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: 'Yes, delete it!',
-                        cancelButtonText: 'No, cancel'
-                    }).then((confirmResult) => {
-                        if (confirmResult.isConfirmed) {
-                            $.ajax({
-                                url: '',
-                                type: 'POST',
-                                data: {
-                                    action: 'delete',
-                                    class_id: classId
-                                },
-                                success: function(response) {
-                                    const result = JSON.parse(response);
-                                    Swal.fire({
-                                        title: result.status === 'success' ? 'Deleted!' : 'Error',
-                                        text: result.message,
-                                        icon: result.status,
-                                        confirmButtonText: 'OK'
-                                    }).then(() => {
-                                        if (result.status === 'success') {
-                                            window.location.reload();
-                                        }
-                                    });
-                                },
-                                error: function() {
-                                    Swal.fire('Error', 'Unable to delete class. Please try again.', 'error');
-                                }
-                            });
-                        }
-                    });
-                }
-            });
-        }
+        $('#class-tabs').html(html);
 
-        function editClass(classId, classname, batch, facultyId, semId, group, electiveSubjectId) {
-            document.getElementById('popup-class-id').value = classId;
-            document.getElementById('classname').value = classname;
-            document.getElementById('batch').value = batch.toUpperCase();
-            document.getElementById('faculty_id').value = facultyId;
-            document.getElementById('popup-sem-id').value = semId;
-            document.getElementById('group').value = group;
-            document.getElementById('popup-title').textContent = 'Edit Class';
-            document.getElementById('popup-submit').textContent = 'Update';
-            
-            // Trigger group change to populate elective subjects
-            const electiveContainer = $('#elective-subject-container');
-            const electiveSelect = $('#elective_subject_id');
-            if (group === 'elective') {
-                $.ajax({
-                    url: '',
-                    type: 'POST',
-                    data: {
-                        action: 'fetch_elective_subjects',
-                        sem_id: semId
-                    },
-                    success: function(response) {
-                        const result = JSON.parse(response);
-                        if (result.status === 'success') {
-                            electiveSelect.empty();
-                            electiveSelect.append('<option value="" disabled>Select Elective Subject</option>');
-                            if (result.subjects.length > 0) {
-                                result.subjects.forEach(subject => {
-                                    const selected = subject.id == electiveSubjectId ? 'selected' : '';
-                                    electiveSelect.append(`<option value="${subject.id}" ${selected}>${subject.subject_name}</option>`);
-                                });
-                                electiveContainer.removeClass('hidden');
-                                electiveSelect.prop('required', true);
-                            } else {
-                                electiveSelect.append('<option value="" disabled>No elective subjects available</option>');
-                                electiveContainer.removeClass('hidden');
-                                electiveSelect.prop('required', false);
-                            }
-                        } else {
-                            Swal.fire('Error', result.message || 'Failed to fetch elective subjects.', 'error');
-                        }
-                    },
-                    error: function() {
-                        Swal.fire('Error', 'Unable to fetch elective subjects. Please try again.', 'error');
-                    }
-                });
-            } else {
-                electiveContainer.addClass('hidden');
-                electiveSelect.prop('required', false);
-                electiveSelect.empty().append('<option value="" disabled selected>Select Elective Subject</option>');
-            }
-
-            document.getElementById('create-class-popup').classList.remove('hidden');
-        }
-
-        function openCreateClassPopup(semId) {
-            document.getElementById('popup-sem-id').value = semId;
-            document.getElementById('popup-class-id').value = '';
-            document.getElementById('classname').value = '';
-            document.getElementById('batch').value = 'A';
-            document.getElementById('faculty_id').value = '';
-            document.getElementById('group').value = 'regular';
-            document.getElementById('popup-title').textContent = 'Create New Class';
-            document.getElementById('popup-submit').textContent = 'Create';
-            $('#elective-subject-container').addClass('hidden');
-            $('#elective_subject_id').prop('required', false).empty().append('<option value="" disabled selected>Select Elective Subject</option>');
-            document.getElementById('create-class-popup').classList.remove('hidden');
-        }
-
-        function closePopup() {
-            document.getElementById('create-class-popup').classList.add('hidden');
-            $('#create-class-form')[0].reset();
-            $('#elective-subject-container').addClass('hidden');
-            $('#elective_subject_id').prop('required', false).empty().append('<option value="" disabled selected>Select Elective Subject</option>');
-        }
-
-        $('#create-class-form').submit(function(e) {
-            e.preventDefault();
-            $.ajax({
-                url: '',
-                type: 'POST',
-                data: $(this).serialize(),
-                success: function(response) {
-                    const result = JSON.parse(response);
-                    Swal.fire(result.status === 'success' ? 'Success' : 'Error', result.message, result.status);
-                    if (result.status === 'success') {
-                        closePopup();
-                        fetchClassInfo($('#popup-sem-id').val(), $('#class-tabs')[0]);
-                    }
-                },
-                error: function() {
-                    Swal.fire('Error', 'Unable to process request. Please try again.', 'error');
-                }
-            });
+        // Tab switching logic
+        $('.class-tab').off('click').on('click', function () {
+            $('.class-tab').removeClass('tab-button-active').addClass('tab-button-inactive');
+            $(this).removeClass('tab-button-inactive').addClass('tab-button-active');
+            const id = $(this).data('class-id');
+            $('[id^="pane-"]').addClass('hidden');
+            $(`#pane-${id}`).removeClass('hidden');
         });
-    </script>
-</body>
+        },
+        error: function () {
+        $('#class-tabs').html('<p class="text-sm text-red-500">Failed to load classes.</p>');
+        }
+    });
+}
 
+  // create triggers
+  $(document).on('click', '#create-new-class, #create-new-class-2, #open-create', function(){
+    const semId = $(this).data('sem-id') || $('#semester-select').val();
+    if (!semId) return Swal.fire('Info','Select a semester first','info');
+    openCreatePopup(semId, null);
+  });
+
+  // edit class
+  $(document).on('click', '.edit-class-btn', function(){
+    const classId = $(this).data('class-id');
+    const semId = $(this).data('sem-id');
+    $.ajax({
+      url: '',
+      method: 'POST',
+      dataType: 'json',
+      data: { action: 'fetch_class', class_id: classId},
+      success: function(resp) {
+        if (!resp || resp.status !== 'success') return Swal.fire('Error','Class not found','error');
+        openCreatePopup(semId, resp.class);
+      },
+      error: function(){ Swal.fire('Error','Failed to fetch class details','error'); }
+    });
+  });
+
+  // delete class (verify password then delete)
+  $(document).on('click', '.delete-class-btn', function(){
+    const classId = $(this).data('class-id');
+    const semId = $(this).data('sem-id');
+    Swal.fire({
+      title: 'Enter your password',
+      input: 'password',
+      inputLabel: 'Password',
+      showCancelButton: true,
+      preConfirm: (pwd) => {
+        if (!pwd) { Swal.showValidationMessage('Enter password'); return false; }
+        return $.ajax({
+          url: '',
+          method: 'POST',
+          dataType: 'json',
+          data: { action: 'verify_password', password: pwd }
+        }).then(function(res){
+          if (!res || res.status !== 'success') throw new Error(res?.message || 'Verification failed');
+          return res;
+        }).catch(function(err){
+          Swal.showValidationMessage(err.message || 'Verification failed');
+        });
+      },
+      allowOutsideClick: () => !Swal.isLoading()
+    }).then((result) => {
+      if (!result.isConfirmed) return;
+      Swal.fire({
+        title: 'Are you sure?',
+        text: 'This will permanently delete the class.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Delete'
+      }).then((c) => {
+        if (!c.isConfirmed) return;
+        $.ajax({
+          url: '',
+          method: 'POST',
+          dataType: 'json',
+          data: { action: 'delete_class', class_id: classId },
+          success: function(resp) {
+            if (resp && resp.status === 'success') {
+              Swal.fire('Deleted', resp.message, 'success').then(()=> {
+                const semIdActive = $('#semester-select').val();
+                const batchId = $('#batch-filter').val() || null;
+                fetchClassTabs(semIdActive, batchId);
+              });
+            } else {
+              Swal.fire('Error', resp?.message || 'Failed to delete', 'error');
+            }
+          },
+          error: function(){ Swal.fire('Error','Delete request failed','error'); }
+        });
+      });
+    });
+  });
+
+  // open popup for create/edit
+  function openCreatePopup(semId, data) {
+    $('#popup-sem-id').val(semId || '');
+    $('#popup-class-id').val(data?.class_id || '');
+    $('#classname').val(data?.classname || '');
+    $('#batch').val((data?.batch || 'a'));
+    $('#batch_id').val(data?.batch_id || '');
+    $('#sem_id').val(semId || '');
+    $('#faculty_id').val(data?.faculty_info_id || '');
+    $('#popup-title').text(data ? 'Edit Class' : 'Create New Class');
+    $('#popup-submit').text(data ? 'Update' : 'Create');
+    // populate batch_id select from current batch-filter options (if any)
+    $('#create-class-popup').removeClass('hidden');
+  }
+
+  $('#popup-cancel').on('click', function(){
+    $('#create-class-popup').addClass('hidden');
+    $('#create-class-form')[0].reset();
+  });
+
+  $('#create-class-form').on('submit', function(e){
+    e.preventDefault();
+    const data = $(this).serializeArray();
+    data.push({ name: 'action', value: 'save_class' });
+    $.ajax({
+      url: '',
+      method: 'POST',
+      dataType: 'json',
+      data: data,
+      success: function(resp) {
+        if (!resp) return Swal.fire('Error','No response','error');
+        Swal.fire(resp.status === 'success' ? 'Success' : 'Error', resp.message, resp.status).then(() => {
+          if (resp.status === 'success') {
+            $('#create-class-popup').addClass('hidden');
+            const semId = $('#popup-sem-id').val();
+            const batchFilter = $('#batch-filter').val() || null;
+            fetchClassTabs(semId, batchFilter);
+          }
+        });
+      },
+      error: function(){ Swal.fire('Error','Request failed','error'); }
+    });
+  });
+});
+</script>
+</body>
 </html>

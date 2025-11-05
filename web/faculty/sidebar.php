@@ -89,7 +89,7 @@ $color = "cyan";
                                 </div>
                             </a>
                         </li>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="manage_faculty.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -98,7 +98,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="manage_batches.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -107,7 +107,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="add_new_students_sheets.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -116,7 +116,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="manage_class.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -126,7 +126,7 @@ $color = "cyan";
                         </li>
                         <?php endif; ?>
                         
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="subjects.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -135,7 +135,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="student_class_allocation.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -144,7 +144,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="subject_allocation.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -154,7 +154,7 @@ $color = "cyan";
                         </li>
                         
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="elective_subject_faculty_allocation.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -163,7 +163,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="student_elective_allocation.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -172,7 +172,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="timetable.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -181,7 +181,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="students_leave.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?> justify-between group">
@@ -195,7 +195,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="event_list.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -204,7 +204,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="examination_management.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -214,7 +214,7 @@ $color = "cyan";
                         </li>
                         <?php endif; ?>
 
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="manage_exam_results.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -223,7 +223,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="upload_results.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -232,7 +232,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
                         <li>
                             <a href="landing_projects.php">
                                 <div class="w-full h-10 flex items-center px-5 text-grey-500 transition bg-transparent hover:bg-<?php echo $color; ?>-600 hover:text-white active:bg-<?php echo $color; ?>-900 <?php echo $radious; ?>">
@@ -241,7 +241,7 @@ $color = "cyan";
                             </a>
                         </li>
                         <?php endif; ?>
-                        <?php if ($userdata['designation'] === 'hod'): ?>
+                        <?php if ($userdata['designation'] === 'HOD'): ?>
 
                         <li class="relative">
                             <div 

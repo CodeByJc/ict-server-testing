@@ -91,7 +91,7 @@ session_start(); // Start the session
                     $_SESSION['user'] = $user; // Save user data in the session
 
                     if ($user['role'] === 'faculty') {
-                        $faculty_sql = "SELECT * FROM faculty_info WHERE faculty_id = ?";
+                        $faculty_sql = "SELECT * FROM faculty_info WHERE user_login_id = ?";
                         $faculty_stmt = $conn->prepare($faculty_sql);
                         $faculty_stmt->bind_param("s", $username);
                         $faculty_stmt->execute();

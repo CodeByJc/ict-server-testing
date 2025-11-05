@@ -41,9 +41,9 @@ if (!isset($_SESSION['image_url'])) {
                 <span class="block text-sm text-gray-400">
                     <?php
                     echo match ($userdata['designation']) {
-                        'hod' => 'HOD-ICT',
-                        'ap' => 'Assistant Professor',
-                        'tp' => 'Trainee Professor',
+                        'HOD' => 'HOD-ICT',
+                        'AP' => 'Assistant Professor',
+                        'TP' => 'Trainee Professor',
                         default => 'Null',
                     };
                     ?>
