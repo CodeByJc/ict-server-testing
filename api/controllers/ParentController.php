@@ -77,4 +77,42 @@ function GetStudentTimetableController($input) {
         echo json_encode(['message' => $response['message']]);
     }
 }
+
+function ParentSendQueryController($input) {
+    if (!isset($input['parent_id']) || !isset($input['query_text'])) {
+        http_response_code(400);
+        echo json_encode(['message' => 'parent_id & query_text required']);
+        return;
+    }
+
+    $parent_id = $input['parent_id'];
+    $query_text = $input['query_text'];
+
+    $response = ParentSendQueryService($parent_id, $query_text);
+
+    if ($response['status']) {
+        echo json_encode(['message' => 'Query sent successfully']);
+    } else {
+        echo json_encode(['message' => $response['message']]);
+    }
+}
+
+function GetParentQueriesController($input) {
+    if (!isset($input['parent_id'])) {
+        http_response_code(400);
+        echo json_encode(['message' => 'parent_id required']);
+        return;
+    }
+
+    $parent_id = $input['parent_id'];
+
+    $response = GetParentQueriesService($parent_id);
+
+    if ($response['status']) {
+        echo json_encode($response['data']);
+    } else {
+        echo json_encode(['message' => $response['message']]);
+    }
+}
+
 ?>

@@ -37,6 +37,22 @@ function    ParentRoutes($method, $subpath) {
                 echo json_encode(['message' => 'Method not allowed']);
             }
             break;
+        case 'sendQuery':
+            if ($method === 'POST') {
+                ParentSendQueryController($input);
+            } else {
+                http_response_code(405);
+                echo json_encode(['message' => 'Method not allowed']);
+            }
+            break;
+        case 'getQueries':
+            if ($method === 'POST') {
+                GetParentQueriesController($input);
+            } else {
+                http_response_code(405);
+                echo json_encode(['message' => 'Method not allowed']);
+            }
+            break;
         default:
             http_response_code(404); // Not Found
             echo json_encode(['message' => 'Invalid Parent API endpoint']);

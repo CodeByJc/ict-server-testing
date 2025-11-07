@@ -115,12 +115,12 @@ function GetFacultyContactService($studentId) {
 
 function GetStudentTimetableService($studentId) {
     global $conn; 
-
     $stmt = $conn->prepare("CALL GetStudentTimetable(?)");
     if (!$stmt) {
         return ['status' => false, 'message' => 'Failed to prepare the stored procedure'];
     }
     $stmt->bind_param("i", $studentId);
+    
     $stmt->execute();
     $result = $stmt->get_result();
         $subject_data = [];
@@ -130,11 +130,56 @@ function GetStudentTimetableService($studentId) {
         $stmt->close();
         if (count($subject_data) > 0) {
             return ['status' => true, 'data' => $subject_data];
-        }else{
+        }
+        else if(count($subject_data) == 0){
+            return ['status' => true, 'data' => ["message" => "No Classes Scheduled"]];
+        }
+        else{
             return ['status' => false, 'message' => 'Invalid Student Id'];
         }
     $stmt->close();
     http_response_code(401); // Unauthorized
     return ['status' => false, 'message' => 'Invalid Student Id'];
 }
+function ParentSendQueryService($parent_id, $query_text) {
+    global $conn;
+
+   $stmt = $conn->prepare("
+        INSERT INTO parent_faculty_queries (parent_id, query_text, created_at) 
+        VALUES (?, ?, NOW())
+    ");
+
+    if (!$stmt) {
+        return ['status' => false, 'message' => 'Failed to prepare statement'];
+    }
+
+    $stmt->bind_param("is", $parent_id, $query_text);
+    $stmt->execute();
+    $stmt->close();
+
+    return ['status' => true];
+}
+
+function GetParentQueriesService($parent_id) {
+    global $conn;
+
+    $stmt = $conn->prepare("SELECT * FROM parent_faculty_queries WHERE parent_id = ? ORDER BY created_at DESC");
+    if (!$stmt) {
+        return ['status' => false, 'message' => 'Failed to prepare statement'];
+    }
+
+    $stmt->bind_param("i", $parent_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $queries = [];
+    while ($row = $result->fetch_assoc()) {
+        $queries[] = $row;
+    }
+
+    $stmt->close();
+    return ['status' => true, 'data' => $queries];
+}
+
+
 ?>
