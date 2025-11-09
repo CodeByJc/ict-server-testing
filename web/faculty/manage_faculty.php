@@ -150,7 +150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                   f.address_info_id,
                   a.address_line, 
                   a.country_name, 
-                  a.city, 
+                  a.city,
+                  ul.email AS faculty_mu_email,          -- ✅ alias for frontend consistency 
                   a.pincode
               FROM faculty_info f
               LEFT JOIN addresses a ON f.address_info_id = a.id
@@ -722,7 +723,7 @@ $(function(){
     $('#fac-id').val(data?.id || '');
     $('#fac-first').val(data?.first_name || '');
     $('#fac-last').val(data?.last_name || '');
-    $('#fac-personal-email').val(data?.faculty_personal_email || '');
+    //$('#fac-personal-email').val(data?.faculty_personal_email || '');
     $('#fac-mu-email').val(data?.faculty_mu_email || '');
     $('#fac-contact').val(data?.faculty_contact_number || data?.phone_no || '');
     $('#fac-designation').val(data?.designation || 'AP');
