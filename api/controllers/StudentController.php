@@ -23,11 +23,16 @@ function StudentLoginController($input) {
     $response = StudentLoginService($username, $password, $device_token);
 
     if ($response['status']) {
-        echo json_encode($response['data']);
+    echo json_encode([
+        'status' => true,
+        'token' => $response['token'],
+        'data' => $response['data']
+    ]);
     } else {
         http_response_code(401);
-        echo json_encode(['message' => $response['message']]);
+        echo json_encode(['status' => false, 'message' => $response['message']]);
     }
+
 
     error_log("Login Response: " . json_encode($response));
 }

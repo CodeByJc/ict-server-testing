@@ -1,16 +1,19 @@
 <?php
-require_once __DIR__ . '/../db/db_connection.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
 
-/**
- * Logout Student Service
- */
 function StudentLogoutService($username) {
-    global $conn;
+    global $conn; // Use global DB connection
 
+    // Sanitize input
     $username = $conn->real_escape_string($username);
+
+
+    // Set device token to NULL
     $update_stmt = $conn->prepare("UPDATE user_login SET device_token = NULL WHERE username = ?");
     if (!$update_stmt) {
-        return ['status' => false, 'message' => 'Failed to prepare update statement'];
+        return ['status' => false, 'message' => 'Failed to prepare the update statement'];
     }
 
     $update_stmt->bind_param("s", $username);
@@ -20,10 +23,6 @@ function StudentLogoutService($username) {
     return ['status' => true, 'message' => 'User logged out successfully'];
 }
 
-
-/**
- * Login Student Service
- */
 function StudentLoginService($username, $password, $device_token) {
     global $conn;
 
@@ -43,32 +42,30 @@ function StudentLoginService($username, $password, $device_token) {
         return ['status' => false, 'message' => 'Invalid username or password'];
     }
 
-    // Stored procedure call
+    // ✅ Fetch full user data
     $stmt = $conn->prepare("CALL LoginStudent(?)");
-    if (!$stmt) {
-        return ['status' => false, 'message' => 'Failed to prepare stored procedure'];
-    }
-
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $result = $stmt->get_result();
 
     if ($result && $result->num_rows > 0) {
         $user_data = $result->fetch_assoc();
+        $stmt->close();
+        $conn->next_result(); // Important for stored procedures
 
-        $parent_details = json_decode($user_data['parent_details'], true);
-        $student_details = json_decode($user_data['student_details'], true);
-        $class_details = json_decode($user_data['class_details'], true);
-
-        $full_details = [
-            'parent_details' => $parent_details,
-            'student_details' => $student_details,
-            'class_details' => $class_details,
+        // ✅ Create JWT token valid for 7 days
+        $issuedAt = time();
+        $expirationTime = $issuedAt + (7 * 24 * 60 * 60); // 7 days
+        $payload = [
+            'username' => $username,
+            'iat' => $issuedAt,
+            'exp' => $expirationTime,
         ];
 
-        $stmt->close();
+        $secretKey = 'a3e1b9e673d1f4c0e6e8d2b1a96f0e5c24b7f122e38b04a94d3cfab1a8f29c9d';
+        $jwt = JWT::encode($payload, $secretKey, 'HS256');
 
-        // Update device token
+        // ✅ Update device token
         $update_stmt = $conn->prepare("UPDATE user_login SET device_token = ? WHERE username = ?");
         if ($update_stmt) {
             $update_stmt->bind_param("ss", $device_token, $username);
@@ -76,7 +73,15 @@ function StudentLoginService($username, $password, $device_token) {
             $update_stmt->close();
         }
 
-        return ['status' => true, 'data' => $full_details];
+        return [
+            'status' => true,
+            'token' => $jwt,
+            'data' => [
+                'parent_details' => json_decode($user_data['parent_details'], true),
+                'student_details' => json_decode($user_data['student_details'], true),
+                'class_details' => json_decode($user_data['class_details'], true),
+            ]
+        ];
     }
 
     $stmt->close();

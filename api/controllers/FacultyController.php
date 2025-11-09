@@ -3,23 +3,43 @@
 require_once __DIR__ . '/../services/FacultyService.php';
 
 function FacultyLoginController($input) {
-    if (!isset($input['username']) || !isset($input['password'])) {
-        echo json_encode(['message' => 'Username and password required']);
+    // Log request for debugging (do not expose sensitive info in production logs)
+    error_log("Received Faculty Login Request: " . json_encode($input));
+
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (!isset($input['username']) || !isset($input['password']) || !isset($input['device_token'])) {
+        http_response_code(400);
+        echo json_encode(['message' => 'Username, password and device_token are required']);
         return;
     }
 
     $username = $input['username'];
     $password = $input['password'];
+    $device_token = $input['device_token'];
 
-    // Call the service
-    $response = FacultyLoginService($username, $password);
+    $response = FacultyLoginService($username, $password, $device_token);
 
-    if ($response['status']) {
-        echo json_encode($response['data']);
+    if (!is_array($response)) {
+        http_response_code(500);
+        echo json_encode(['status' => false, 'message' => 'Internal error']);
+        error_log("Faculty Login Response (invalid): " . json_encode($response));
+        return;
+    }
+
+    if (!empty($response['status'])) {
+        // Success: return same shape as Student endpoint (status, token, data)
+        echo json_encode([
+            'status' => true,
+            'token' => $response['token'],
+            'data' => $response['data']
+        ]);
     } else {
         http_response_code(401);
-        echo json_encode(['message' => $response['message']]);
+        echo json_encode(['status' => false, 'message' => $response['message'] ?? 'Unauthorized']);
     }
+
+    error_log("Faculty Login Response: " . json_encode($response));
 }
 
 function GetFacultyListByStudentController($input) {
