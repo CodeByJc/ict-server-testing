@@ -1,6 +1,10 @@
 <?php
 
-require_once __DIR__ . '/../db/db_connection.php';
+require_once __DIR__ . '/../vendor/autoload.php'; // adjust path to composer autoload if needed
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
+require_once __DIR__ . '/../db/db_connection.php'; // ensure $conn is available (adjust path)
+
 
 function ParentOutService($username) {
     global $conn; // Use global DB connection
@@ -23,70 +27,78 @@ function ParentOutService($username) {
 }
 
 
-function ParentService($username, $password, $device_token) {
-    global $conn; // Use global DB connection
+function ParentLoginService($username, $password, $device_token) {
+    global $conn;
 
-    // Sanitize input
+    // sanitize incoming username
     $username = $conn->real_escape_string($username);
 
-    // Prepare the statement to get the hashed password
+    // 1) Ensure username exists (optional, clearer messages)
     $stmt = $conn->prepare("SELECT password FROM user_login WHERE username = ?");
     if (!$stmt) {
-        return ['status' => false, 'message' => 'Failed to prepare the statement'];
+        return ['status' => false, 'message' => 'Failed to prepare query'];
     }
-
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $stmt->bind_result($hashedPassword);
     $stmt->fetch();
     $stmt->close();
 
-    // Check if a hashed password was found
     if (!$hashedPassword || !password_verify($password, $hashedPassword)) {
-        http_response_code(401); // Unauthorized
         return ['status' => false, 'message' => 'Invalid username or password'];
     }
 
-    // Proceed to call the stored procedure
+    // 2) Call stored procedure
     $stmt = $conn->prepare("CALL LoginParent(?)");
-    if (!$stmt) {
-        return ['status' => false, 'message' => 'Failed to prepare the stored procedure'];
-    }
-
-    $stmt->bind_param("s", $username);
+    $stmt->bind_param('s', $username);
     $stmt->execute();
     $result = $stmt->get_result();
 
     if ($result && $result->num_rows > 0) {
-        $user_data = $result->fetch_assoc();
-        
-        // Decode the JSON fields
-        $parent_details = json_decode($user_data['parent_details'], true);
-        $student_details = json_decode($user_data['student_details'], true);
-        $class_details = json_decode($user_data['class_details'], true);
-
-        $full_details = [
-            'parent_details' => $parent_details,
-            'student_details' => $student_details,
-            'class_details' => $class_details,
+        $row = $result->fetch_assoc();
+        $stmt->close();
+        $conn->next_result(); // Important after calling a stored procedure
+        // ✅ Create JWT token valid for 7 days
+        $issuedAt = time();
+        $expirationTime = $issuedAt + (7 * 24 * 60 * 60); // 7 days
+        $payload = [
+            'username' => $username,
+            'iat' => $issuedAt,
+            'exp' => $expirationTime,
         ];
 
-        $stmt->close();
+        // NOTE: move secret to config/env in production
+        $secretKey = 'a3e1b9e673d1f4c0e6e8d2b1a96f0e5c24b7f122e38b04a94d3cfab1a8f29c9d';
+        $jwt = JWT::encode($payload, $secretKey, 'HS256');
 
-        // Store the device token in the user_login table
+        // ✅ Update device token if provided
         $update_stmt = $conn->prepare("UPDATE user_login SET device_token = ? WHERE username = ?");
         if ($update_stmt) {
             $update_stmt->bind_param("ss", $device_token, $username);
             $update_stmt->execute();
             $update_stmt->close();
         }
-        return ['status' => true, 'data' => $full_details];
-    }
 
-    $stmt->close();
-    http_response_code(401); // Unauthorized
-    return ['status' => false, 'message' => 'Invalid username or password'];
+        // ✅ Return standardized response
+        return [
+            'status' => true,
+            'token' => $jwt,
+            'data' => [
+                'parent_details' => json_decode($row['parent_details'], true),
+                'student_details' => json_decode($row['student_details'], true),
+                'class_details' => json_decode($row['class_details'], true),
+            ]
+        ];
+
+    } else {
+        $stmt->close();
+        $conn->next_result();
+        return ['status' => false, 'message' => 'No user data found'];
+    }
 }
+
+
+
 
 function GetFacultyContactService($studentId) {
     global $conn; 

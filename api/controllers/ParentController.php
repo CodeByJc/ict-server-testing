@@ -3,26 +3,36 @@
 require_once __DIR__ . '/../services/ParentService.php';
 
 function ParentLoginController($input) {
+
+    header('Content-Type: application/json; charset=utf-8');
+
     if (!isset($input['username']) || !isset($input['password']) || !isset($input['device_token'])) {
-        http_response_code(400); // Bad Request
-        echo json_encode(['message' => 'Username and password required']);
+        http_response_code(400);
+        echo json_encode(['message' => 'Username, password and device_token are required']);
         return;
     }
 
-    // Extract username and password
     $username = $input['username'];
     $password = $input['password'];
     $device_token = $input['device_token'];
 
-    // Call the service
-    $response = ParentService($username, $password,$device_token);
+    // Call the service that handles authentication & returns standardized response
+    $response = ParentLoginService($username, $password, $device_token);
 
     if ($response['status']) {
-        echo json_encode($response['data']);
+    echo json_encode([
+        'status' => true,
+        'token' => $response['token'],
+        'data' => $response['data']
+    ]);
     } else {
-        echo json_encode(['message' => $response['message']]);
+        http_response_code(401);
+        echo json_encode(['status' => false, 'message' => $response['message']]);
     }
+
+    error_log("Parent Login Response: " . json_encode($response));
 }
+
 
 function ParentLogoutController($input) {
     if (!isset($input['username'])) {
