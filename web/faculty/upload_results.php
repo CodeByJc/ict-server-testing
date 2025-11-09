@@ -30,13 +30,15 @@ function ensure_result_table($conn) {
         `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `student_id` INT NOT NULL,
         `sem_info_id` INT NOT NULL,
+        `batch_info_id` INT DEFAULT NULL,
         `backlog` INT DEFAULT NULL,
         `sgpa` DECIMAL(4,2) DEFAULT NULL,
         `result` VARCHAR(32) DEFAULT NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY `uniq_student_sem` (`student_id`, `sem_info_id`),
         INDEX (`student_id`),
-        INDEX (`sem_info_id`)
+        INDEX (`sem_info_id`),
+        INDEX (`batch_info_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     if (!$conn->query($sql)) {
         throw new Exception("Failed to ensure student_result_semester table: " . $conn->error);
@@ -112,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file']) && empty($_P
         $col_gr     = $findCol(['gr_no','gr no','grno','gr']);
         $col_name   = $findCol(['student_full_name','student name','name','full_name']);
         $col_seminfo= $findCol(['sem_info_id','sem_info','sem','semester']);
+        $col_batchinfo= $findCol(['batch_info_id']);
 
         // Fallback to positional A/B/C/D mapping (user-specified layout)
         if (!$col_enroll && !$col_gr) {
@@ -139,13 +142,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file']) && empty($_P
         }
 
         // Fetch subject codes for semester from DB
-        $stmt = $conn->prepare("SELECT `id`, `subject_code` FROM `subject_info` WHERE `sem_info_id` = ?");
+        // $stmt = $conn->prepare("SELECT `id`, `subject_code` FROM `subject_info` WHERE `sem_info_id` = ?");
+        // $stmt->bind_param("i", $sem_selected);
+        // $stmt->execute();
+        // $res = $stmt->get_result();
+        // $subject_by_code = [];
+        // while ($r = $res->fetch_assoc()) {
+        //     $subject_by_code[strtoupper(trim($r['subject_code']))] = (int)$r['id'];
+        // }
+        // $stmt->close();
+
+        $stmt = $conn->prepare("SELECT `id`, `subject_code`, `sem_info_id`, `batch_id`, `type` FROM `subject_info` WHERE `sem_info_id` = ? OR `batch_id` IN (98,99) OR `sem_info_id` IN (15,16)");
         $stmt->bind_param("i", $sem_selected);
         $stmt->execute();
         $res = $stmt->get_result();
         $subject_by_code = [];
         while ($r = $res->fetch_assoc()) {
-            $subject_by_code[strtoupper(trim($r['subject_code']))] = (int)$r['id'];
+            $code = strtoupper(trim($r['subject_code']));
+            if (!isset($subject_by_code[$code])) $subject_by_code[$code] = [];
+            $subject_by_code[$code][] = $r; // store rows to choose best match later
         }
         $stmt->close();
 
@@ -179,6 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file']) && empty($_P
             $gr_no = $col_gr ? trim((string)($row[$col_gr] ?? '')) : '';
             $stu_name = $col_name ? trim((string)($row[$col_name] ?? '')) : '';
             $row_seminfo = $col_seminfo ? (int)trim((string)($row[$col_seminfo] ?? $sem_selected)) : $sem_selected;
+            $row_batchinfo = $col_batchinfo ? (int)trim((string)($row[$col_batchinfo] ?? 0)) : null;
             if ($enrollment_no === '' && $gr_no === '') continue;
 
             $entry = [
@@ -187,6 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file']) && empty($_P
                 'gr_no' => $gr_no,
                 'student_full_name' => $stu_name,
                 'sem_info_id' => $row_seminfo,
+                'batch_info_id' => $row_batchinfo,
                 'grades' => [],
                 'backlog' => $col_backlog ? trim((string)($row[$col_backlog] ?? '')) : null,
                 'sgpa' => $col_sgpa ? trim((string)($row[$col_sgpa] ?? '')) : null,
@@ -248,12 +265,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $report = ['inserted_rows'=>0,'inserted_grades'=>0,'updated_result_rows'=>0,'skipped_rows'=>0,'errors'=>[]];
 
     $conn->begin_transaction();
+    // try {
+    //     // prepare statements with backticked column names
+    //     $stmt_find_student = $conn->prepare("SELECT `id`, `category`, `course`, `batch_id` FROM `student_info` WHERE `enrollment_no` = ? OR `gr_no` = ? LIMIT 1");
+    //     $stmt_insert_grade = $conn->prepare("INSERT INTO `student_subject_grade` (`student_id`, `subject_id`, `grade`) VALUES (?, ?, ?)");
+    //     $stmt_check_result = $conn->prepare("SELECT `id` FROM `student_result_semester` WHERE `student_id` = ? AND `sem_info_id` = ? AND COALESCE(`batch_info_id`,0) = ? LIMIT 1");
+    //     $stmt_insert_result = $conn->prepare("INSERT INTO `student_result_semester` (`student_id`, `sem_info_id`, `batch_info_id`, `backlog`, `sgpa`, `result`) VALUES (?, ?, ?, ?, ?, ?)");
+    //     $stmt_update_result = $conn->prepare("UPDATE `student_result_semester` SET `backlog` = ?, `sgpa` = ?, `result` = ? WHERE `id` = ?");
+    //     $stmt_update_cgpa = $conn->prepare("UPDATE `student_info` SET `cgpa` = ? WHERE `id` = ?");
+
+    //     if (!$stmt_find_student || !$stmt_insert_grade || !$stmt_check_result || !$stmt_insert_result || !$stmt_update_result || !$stmt_update_cgpa) {
+    //         throw new Exception('Prepare failed: '.$conn->error);
+    //     }
+
+    //     foreach ($rows as $entry) {
+    //         $enroll = $entry['enrollment_no'];
+    //         $gr = $entry['gr_no'];
+    //         $grades = $entry['grades'];
+
+    //         $stmt_find_student->bind_param("ss", $enroll, $gr);
+    //         $stmt_find_student->execute();
+    //         $res = $stmt_find_student->get_result();
+    //         if (!$res || $res->num_rows === 0) {
+    //             $report['errors'][] = "Row {$entry['row']}: student not found (enroll: {$enroll}, gr: {$gr})";
+    //             $report['skipped_rows']++;
+    //             continue;
+    //         }
+    //         $student_row = $res->fetch_assoc();
+    //         $student_id = (int)$student_row['id'];
+    //         $student_category = strtoupper((string)$student_row['category']);
+
+    //         // Apply rule: if sem_info_id < 3 and student.category is D2D, skip per-subject inserts
+    //         $allow_subject_insert = true;
+    //         if ($entry['sem_info_id'] < 3 && $student_category === 'D2D') $allow_subject_insert = false;
+
+    //         $grade_count = 0;
+    //         if ($allow_subject_insert && !empty($grades)) {
+    //             foreach ($grades as $subcode => $gradeRaw) {
+    //                 if (!isset($subject_by_code[$subcode])) {
+    //                     $report['errors'][] = "Row {$entry['row']}: subject code {$subcode} not found for sem {$sem_selected}, skipped grade.";
+    //                     continue;
+    //                 }
+    //                 $subject_id = (int)$subject_by_code[$subcode];
+    //                 $g = strtoupper(trim($gradeRaw));
+    //                 if ($g === '' || in_array($g, ['-','NA','N/A'])) continue;
+    //                 $stmt_insert_grade->bind_param("iis", $student_id, $subject_id, $g);
+    //                 if (!$stmt_insert_grade->execute()) {
+    //                     $report['errors'][] = "Row {$entry['row']}: grade insert failed for student {$student_id}, subject {$subject_id}: ".$stmt_insert_grade->error;
+    //                     continue;
+    //                 }
+    //                 $grade_count++; $report['inserted_grades']++;
+    //             }
+    //         }
+
+    //         // semester-level data
+    //         $backlog_val = null;
+    //         if ($entry['backlog'] !== null && $entry['backlog'] !== '') {
+    //             $bv = preg_replace('/\D/', '', $entry['backlog']);
+    //             $backlog_val = $bv === '' ? null : (int)$bv;
+    //         }
+    //         $sgpa_val = ($entry['sgpa'] !== null && $entry['sgpa'] !== '') ? (float)str_replace(',', '.', $entry['sgpa']) : null;
+    //         $result_val = $entry['result'] !== null ? strtoupper(trim($entry['result'])) : null;
+
+    //         // $stmt_check_result->bind_param("ii", $student_id, $entry['sem_info_id']);
+    //         // $stmt_check_result->execute();
+    //         // $res_r = $stmt_check_result->get_result();
+    //         // if ($res_r && $res_r->num_rows > 0) {
+    //         //     $rid = (int)$res_r->fetch_assoc()['id'];
+    //         //     // types: backlog (i), sgpa (d), result (s), id (i) -> "idsi"
+    //         //     $stmt_update_result->bind_param("idsi", $backlog_val, $sgpa_val, $result_val, $rid);
+    //         //     if (!$stmt_update_result->execute()) {
+    //         //         $report['errors'][] = "Row {$entry['row']}: failed to update student_result_semester for student {$student_id}: ".$stmt_update_result->error;
+    //         //     } else $report['updated_result_rows']++;
+    //         // } else {
+    //         //     // types: student_id (i), sem_info_id (i), backlog (i), sgpa (d), result (s) -> "iiids"
+    //         //     $stmt_insert_result->bind_param("iiids", $student_id, $entry['sem_info_id'], $backlog_val, $sgpa_val, $result_val);
+    //         //     if (!$stmt_insert_result->execute()) {
+    //         //         $report['errors'][] = "Row {$entry['row']}: failed to insert student_result_semester for student {$student_id}: ".$stmt_insert_result->error;
+    //         //     } else $report['updated_result_rows']++;
+    //         // }
+
+    //         // normalize batch id for comparison: use 0 when parsed null so COALESCE(...) works in query
+
+    //         $batch_val = isset($entry['batch_info_id']) && $entry['batch_info_id'] !== null ? (int)$entry['batch_info_id'] : 0;
+
+    //         // check if a result row exists for (student_id, sem_info_id, batch_info_id)
+    //         $stmt_check_result->bind_param("iii", $student_id, $entry['sem_info_id'], $batch_val);
+    //         $stmt_check_result->execute();
+    //         $res_r = $stmt_check_result->get_result();
+
+    //         if ($res_r && $res_r->num_rows > 0) {
+    //             $rid = (int)$res_r->fetch_assoc()['id'];
+    //             // update existing semester row (backlog (i), sgpa (d), result (s), id (i))
+    //             $stmt_update_result->bind_param("idsi", $backlog_val, $sgpa_val, $result_val, $rid);
+    //             if (!$stmt_update_result->execute()) {
+    //                 $report['errors'][] = "Row {$entry['row']}: failed to update student_result_semester for student {$student_id}: ".$stmt_update_result->error;
+    //             } else $report['updated_result_rows']++;
+    //         } else {
+    //             // insert new semester row with batch_info_id
+    //             // types: student_id(i), sem_info_id(i), batch_info_id(i), backlog(i), sgpa(d), result(s) -> "iiiids"
+    //             $stmt_insert_result->bind_param("iiiids", $student_id, $entry['sem_info_id'], $batch_val, $backlog_val, $sgpa_val, $result_val);
+    //             if (!$stmt_insert_result->execute()) {
+    //                 $report['errors'][] = "Row {$entry['row']}: failed to insert student_result_semester for student {$student_id}: ".$stmt_insert_result->error;
+    //             } else $report['updated_result_rows']++;
+    //         }
+
+
+    //         if ($entry['cgpa'] !== null && $entry['cgpa'] !== '') {
+    //             $cg = (float)str_replace(',', '.', $entry['cgpa']);
+    //             $stmt_update_cgpa->bind_param("di", $cg, $student_id);
+    //             if (!$stmt_update_cgpa->execute()) {
+    //                 $report['errors'][] = "Row {$entry['row']}: failed to update cgpa for student {$student_id}: ".$stmt_update_cgpa->error;
+    //             }
+    //         }
+
+    //         if ($grade_count > 0 || $backlog_val !== null || $sgpa_val !== null || $entry['result'] !== null) $report['inserted_rows']++;
+    //         else $report['skipped_rows']++;
+    //     }
+
+    //     $conn->commit();
+    // }
     try {
         // prepare statements with backticked column names
-        $stmt_find_student = $conn->prepare("SELECT `id`, `category` FROM `student_info` WHERE `enrollment_no` = ? OR `gr_no` = ? LIMIT 1");
+        $stmt_find_student = $conn->prepare("SELECT `id`, `category`, `stream`, `batch_info_id` FROM `student_info` WHERE `enrollment_no` = ? OR `gr_no` = ? LIMIT 1");
         $stmt_insert_grade = $conn->prepare("INSERT INTO `student_subject_grade` (`student_id`, `subject_id`, `grade`) VALUES (?, ?, ?)");
-        $stmt_check_result = $conn->prepare("SELECT `id` FROM `student_result_semester` WHERE `student_id` = ? AND `sem_info_id` = ? LIMIT 1");
-        $stmt_insert_result = $conn->prepare("INSERT INTO `student_result_semester` (`student_id`, `sem_info_id`, `backlog`, `sgpa`, `result`) VALUES (?, ?, ?, ?, ?)");
+        $stmt_check_result = $conn->prepare("SELECT `id` FROM `student_result_semester` WHERE `student_id` = ? AND `sem_info_id` = ? AND COALESCE(`batch_info_id`,0) = ? LIMIT 1");
+        $stmt_insert_result = $conn->prepare("INSERT INTO `student_result_semester` (`student_id`, `sem_info_id`, `batch_info_id`, `backlog`, `sgpa`, `result`) VALUES (?, ?, ?, ?, ?, ?)");
         $stmt_update_result = $conn->prepare("UPDATE `student_result_semester` SET `backlog` = ?, `sgpa` = ?, `result` = ? WHERE `id` = ?");
         $stmt_update_cgpa = $conn->prepare("UPDATE `student_info` SET `cgpa` = ? WHERE `id` = ?");
 
@@ -277,6 +414,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $student_row = $res->fetch_assoc();
             $student_id = (int)$student_row['id'];
             $student_category = strtoupper((string)$student_row['category']);
+            $student_stream = strtolower(trim((string)($student_row['stream'] ?? '')));
+            $student_batch = (int)($student_row['batch_info_id'] ?? 0);
 
             // Apply rule: if sem_info_id < 3 and student.category is D2D, skip per-subject inserts
             $allow_subject_insert = true;
@@ -285,13 +424,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $grade_count = 0;
             if ($allow_subject_insert && !empty($grades)) {
                 foreach ($grades as $subcode => $gradeRaw) {
-                    if (!isset($subject_by_code[$subcode])) {
-                        $report['errors'][] = "Row {$entry['row']}: subject code {$subcode} not found for sem {$sem_selected}, skipped grade.";
+                    $key = strtoupper(trim((string)$subcode));
+                    if (!isset($subject_by_code[$key])) {
+                        $report['errors'][] = "Row {$entry['row']}: subject code {$key} not found for sem {$sem_selected}, skipped grade.";
                         continue;
                     }
-                    $subject_id = (int)$subject_by_code[$subcode];
-                    $g = strtoupper(trim($gradeRaw));
+
+                    // subject_by_code[$key] may be array of rows — choose best match
+                    $subject_rows = $subject_by_code[$key];
+                    $subject_id = null;
+
+                    // 1) prefer exact sem_info_id match
+                    foreach ($subject_rows as $sr) {
+                        if ((int)$sr['sem_info_id'] === (int)$entry['sem_info_id']) { $subject_id = (int)$sr['id']; break; }
+                    }
+
+                    // 2) try ICT/ICT-DIPLOMA open-elective mapping when no exact sem match
+                    if ($subject_id === null) {
+                        if ($student_stream === 'ICT') {
+                            foreach ($subject_rows as $sr) {
+                                if ((int)$sr['batch_info_id'] === 99 && (int)$sr['sem_info_id'] === 15) { $subject_id = (int)$sr['id']; break; }
+                            }
+                        } elseif ($student_stream === 'ICT-DIPLOMA') {
+                            foreach ($subject_rows as $sr) {
+                                if ((int)$sr['batch_info_id'] === 98 && (int)$sr['sem_info_id'] === 16) { $subject_id = (int)$sr['id']; break; }
+                            }
+                        }
+                    }
+
+                    // 3) fallback to first available row
+                    if ($subject_id === null) $subject_id = (int)$subject_rows[0]['id'];
+
+                    $g = strtoupper(trim((string)$gradeRaw));
                     if ($g === '' || in_array($g, ['-','NA','N/A'])) continue;
+
                     $stmt_insert_grade->bind_param("iis", $student_id, $subject_id, $g);
                     if (!$stmt_insert_grade->execute()) {
                         $report['errors'][] = "Row {$entry['row']}: grade insert failed for student {$student_id}, subject {$subject_id}: ".$stmt_insert_grade->error;
@@ -308,21 +474,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $backlog_val = $bv === '' ? null : (int)$bv;
             }
             $sgpa_val = ($entry['sgpa'] !== null && $entry['sgpa'] !== '') ? (float)str_replace(',', '.', $entry['sgpa']) : null;
-            $result_val = $entry['result'] !== null ? strtoupper(trim($entry['result'])) : null;
+            $result_val = $entry['result'] !== null ? strtoupper(trim((string)$entry['result'])) : null;
 
-            $stmt_check_result->bind_param("ii", $student_id, $entry['sem_info_id']);
+            // normalize batch id for comparison: use 0 when parsed null so COALESCE(...) works in query
+            $batch_val = isset($entry['batch_info_id']) && $entry['batch_info_id'] !== null ? (int)$entry['batch_info_id'] : 0;
+
+            // check if a result row exists for (student_id, sem_info_id, batch_info_id)
+            $stmt_check_result->bind_param("iii", $student_id, $entry['sem_info_id'], $batch_val);
             $stmt_check_result->execute();
             $res_r = $stmt_check_result->get_result();
+
             if ($res_r && $res_r->num_rows > 0) {
                 $rid = (int)$res_r->fetch_assoc()['id'];
-                // types: backlog (i), sgpa (d), result (s), id (i) -> "idsi"
+                // update existing semester row (backlog (i), sgpa (d), result (s), id (i))
                 $stmt_update_result->bind_param("idsi", $backlog_val, $sgpa_val, $result_val, $rid);
                 if (!$stmt_update_result->execute()) {
                     $report['errors'][] = "Row {$entry['row']}: failed to update student_result_semester for student {$student_id}: ".$stmt_update_result->error;
                 } else $report['updated_result_rows']++;
             } else {
-                // types: student_id (i), sem_info_id (i), backlog (i), sgpa (d), result (s) -> "iiids"
-                $stmt_insert_result->bind_param("iiids", $student_id, $entry['sem_info_id'], $backlog_val, $sgpa_val, $result_val);
+                // insert new semester row with batch_info_id
+                // types: student_id(i), sem_info_id(i), batch_info_id(i), backlog(i), sgpa(d), result(s) -> "iiiids"
+                $stmt_insert_result->bind_param("iiiids", $student_id, $entry['sem_info_id'], $batch_val, $backlog_val, $sgpa_val, $result_val);
                 if (!$stmt_insert_result->execute()) {
                     $report['errors'][] = "Row {$entry['row']}: failed to insert student_result_semester for student {$student_id}: ".$stmt_insert_result->error;
                 } else $report['updated_result_rows']++;
@@ -341,7 +513,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
 
         $conn->commit();
-    } catch (Exception $e) {
+    } 
+    catch (Exception $e) {
         $conn->rollback();
         echo json_encode(['status'=>'error','message'=>'Transaction failed: '.$e->getMessage()]); exit;
     }
