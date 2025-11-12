@@ -7,7 +7,7 @@ $leave_id = intval($_GET['leave_id']);
 
 if (isset($_GET['leave_id'])) {
     // Fetch leave information from the database
-    $leave_query = "SELECT li.*,CONCAT(si.first_name, ' ', si.last_name) AS student_name,si.gr_no
+    $leave_query = "SELECT li.*,CONCAT(si.first_name, ' ', si.last_name) AS student_name,si.enrollment_no
                     FROM leave_info li  
                     JOIN student_info si ON li.student_info_id = si.id
                     WHERE li.id = $leave_id";
@@ -32,7 +32,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (mysqli_query($conn, $update_query)) {
         echo "success";
         $message = ($status === 'approved') ? "Your leave is APPROVED!" : "Your leave is DECLINED!";
-        sendFCMNotification($leave['gr_no'],$message,$reply);
+        sendFCMNotification($leave['enrollment_no'],$message,$reply);
     } else {
         echo "error: " . mysqli_error($conn); // Output the error for debugging
     }

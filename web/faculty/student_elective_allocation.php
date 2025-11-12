@@ -1,4 +1,6 @@
 <?php
+
+//Make sure your sem_info table actually has a batch_info_id column
 // student_elective_allocation.php
 // Elective allocation (student -> subject) with optional class assignment.
 // This version adds per-row checkboxes (right side) and a bulk action bar
@@ -63,12 +65,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json; charset=utf-8');
     $action = trim($_POST['action']);
 
+    // --- ADDED --- Fetch batches (using schema from subject_allocation.php)
+    if ($action === 'fetch_batches') {
+        $query = "SELECT id, batch_start_year, batch_end_year, edu_type FROM batch_info ORDER BY batch_start_year DESC";
+        $res = mysqli_query($conn, $query);
+        $batches = [];
+        while ($row = mysqli_fetch_assoc($res)) {
+            $batches[] = $row;
+        }
+        echo json_encode(['status' => 'success', 'batches' => $batches]);
+        exit;
+    }
+
+    // --- UPDATED --- Fetch subjects (now requires batch_id)
     if ($action === 'fetch_subjects') {
         $sem_id = intval($_POST['sem_info_id'] ?? 0);
-        if ($sem_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester ID']); exit; }
-        $sql = "SELECT id, subject_name FROM subject_info WHERE sem_info_id = ? AND `type` = 'elective' ORDER BY subject_name";
+        $batch_id = intval($_POST['batch_info_id'] ?? 0); // --- ADDED ---
+        if ($sem_id <= 0 || $batch_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester or batch ID']); exit; } // --- UPDATED ---
+        
+        // Assuming subject_info has a 'batch_id' column like in subject_allocation.php
+        $sql = "SELECT id, subject_name FROM subject_info WHERE sem_info_id = ? AND batch_id = ? AND `type` = 'elective' ORDER BY subject_name"; // --- UPDATED ---
         $stmt = mysqli_prepare($conn, $sql);
-        mysqli_stmt_bind_param($stmt, 'i', $sem_id);
+        mysqli_stmt_bind_param($stmt, 'ii', $sem_id, $batch_id); // --- UPDATED ---
         mysqli_stmt_execute($stmt);
         $subjects = fetch_all_stmt($stmt);
         mysqli_stmt_close($stmt);
@@ -76,12 +94,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
+    // --- UPDATED --- Fetch classes (now requires batch_id)
     if ($action === 'fetch_classes_for_sem') {
         $sem_id = intval($_POST['sem_info_id'] ?? 0);
-        if ($sem_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester ID']); exit; }
-        $sql = "SELECT id, classname, batch FROM class_info WHERE sem_info_id = ? ORDER BY classname, batch";
+        $batch_id = intval($_POST['batch_info_id'] ?? 0); // --- ADDED ---
+        if ($sem_id <= 0 || $batch_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester or batch ID']); exit; } // --- UPDATED ---
+
+        // Assuming class_info has a 'batch_info_id' column
+        $sql = "SELECT id, classname, batch FROM class_info WHERE sem_info_id = ? AND batch_info_id = ? ORDER BY classname, batch"; // --- UPDATED ---
         $stmt = mysqli_prepare($conn, $sql);
-        mysqli_stmt_bind_param($stmt, 'i', $sem_id);
+        mysqli_stmt_bind_param($stmt, 'ii', $sem_id, $batch_id); // --- UPDATED ---
         mysqli_stmt_execute($stmt);
         $classes = fetch_all_stmt($stmt);
         mysqli_stmt_close($stmt);
@@ -89,45 +111,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
+    // --- UPDATED --- Fetch students (now requires batch_id)
     if ($action === 'fetch_students') {
         $sem_id = intval($_POST['sem_info_id'] ?? 0);
         $subject_id = intval($_POST['subject_info_id'] ?? 0);
-        if ($sem_id <= 0 || $subject_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester or subject ID']); exit; }
+        $batch_id = intval($_POST['batch_info_id'] ?? 0); // --- ADDED ---
+        if ($sem_id <= 0 || $subject_id <= 0 || $batch_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester, subject, or batch ID']); exit; } // --- UPDATED ---
+        
         $has_class_col = column_exists($conn, 'elective_allocation', 'class_info_id');
+        
+        // Assuming student_info (si) has a 'batch_info_id' column
         if ($has_class_col) {
             $sql = "SELECT si.id, si.first_name, si.last_name, si.gr_no, si.enrollment_no, ea.id AS allocation_id, ea.class_info_id
                     FROM student_info si
                     LEFT JOIN elective_allocation ea ON si.id = ea.student_info_id AND ea.subject_info_id = ?
-                    WHERE si.sem_info_id = ?
-                    ORDER BY si.enrollment_no";
+                    WHERE si.sem_info_id = ? AND si.batch_info_id = ?
+                    ORDER BY si.enrollment_no"; // --- UPDATED ---
             $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, 'ii', $subject_id, $sem_id);
+            mysqli_stmt_bind_param($stmt, 'iii', $subject_id, $sem_id, $batch_id); // --- UPDATED ---
         } else {
             $sql = "SELECT si.id, si.first_name, si.last_name, si.gr_no, si.enrollment_no, ea.id AS allocation_id, NULL AS class_info_id
                     FROM student_info si
                     LEFT JOIN elective_allocation ea ON si.id = ea.student_info_id AND ea.subject_info_id = ?
-                    WHERE si.sem_info_id = ?
-                    ORDER BY si.enrollment_no";
+                    WHERE si.sem_info_id = ? AND si.batch_info_id = ?
+                    ORDER BY si.enrollment_no"; // --- UPDATED ---
             $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, 'ii', $subject_id, $sem_id);
+            mysqli_stmt_bind_param($stmt, 'iii', $subject_id, $sem_id, $batch_id); // --- UPDATED ---
         }
         mysqli_stmt_execute($stmt);
         $students = fetch_all_stmt($stmt);
         mysqli_stmt_close($stmt);
-        echo json_encode(['status'=>'success','students'=>$students,'has_class_col'=>$has_class_col]);
+        echo json_encode(['status'=>'success','students'=>$students,'has_class_col'=>$hasClassCol]);
         exit;
     }
 
+    // --- UPDATED --- Fetch available students (now requires batch_id)
     if ($action === 'fetch_available_students') {
         $sem_id = intval($_POST['sem_info_id'] ?? 0);
         $subject_id = intval($_POST['subject_info_id'] ?? 0);
-        if ($sem_id <= 0 || $subject_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester or subject ID']); exit; }
+        $batch_id = intval($_POST['batch_info_id'] ?? 0); // --- ADDED ---
+        if ($sem_id <= 0 || $subject_id <= 0 || $batch_id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid semester, subject, or batch ID']); exit; } // --- UPDATED ---
+        
+        // Assuming student_info (si) has a 'batch_info_id' column
         $sql = "SELECT si.id, si.first_name, si.last_name, si.enrollment_no
                 FROM student_info si
-                WHERE si.sem_info_id = ? AND si.id NOT IN (SELECT student_info_id FROM elective_allocation WHERE subject_info_id = ?)
-                ORDER BY si.first_name, si.last_name";
+                WHERE si.sem_info_id = ? AND si.batch_info_id = ? AND si.id NOT IN (SELECT student_info_id FROM elective_allocation WHERE subject_info_id = ?)
+                ORDER BY si.first_name, si.last_name"; // --- UPDATED ---
         $stmt = mysqli_prepare($conn, $sql);
-        mysqli_stmt_bind_param($stmt, 'ii', $sem_id, $subject_id);
+        mysqli_stmt_bind_param($stmt, 'iii', $sem_id, $batch_id, $subject_id); // --- UPDATED ---
         mysqli_stmt_execute($stmt);
         $students = fetch_all_stmt($stmt);
         mysqli_stmt_close($stmt);
@@ -135,15 +166,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
+    // --- UPDATED --- Add students (now requires batch_id)
     if ($action === 'add_students') {
         $student_ids = json_decode($_POST['student_ids'] ?? '[]', true);
         $subject_id = intval($_POST['subject_info_id'] ?? 0);
         $sem_id = intval($_POST['sem_info_id'] ?? 0);
+        $batch_id = intval($_POST['batch_info_id'] ?? 0); // --- ADDED ---
         $class_id = isset($_POST['class_id']) && $_POST['class_id'] !== '' ? intval($_POST['class_id']) : null;
-        if (!is_array($student_ids) || empty($student_ids) || $subject_id <= 0 || $sem_id <= 0) {
-            echo json_encode(['status'=>'error','message'=>'Invalid input: need student_ids array, subject_info_id and sem_info_id']); exit;
+        
+        if (!is_array($student_ids) || empty($student_ids) || $subject_id <= 0 || $sem_id <= 0 || $batch_id <= 0) { // --- UPDATED ---
+            echo json_encode(['status'=>'error','message'=>'Invalid input: need student_ids array, subject_id, sem_id, and batch_id']); exit; // --- UPDATED ---
         }
+        
         $has_class_col = column_exists($conn, 'elective_allocation', 'class_info_id');
+        // Assuming elective_allocation has a 'batch_info_id' column
+        $has_batch_col = column_exists($conn, 'elective_allocation', 'batch_info_id');
+
         $inserted = 0; $skipped = 0; $errors = [];
         mysqli_begin_transaction($conn);
         try {
@@ -157,16 +195,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 mysqli_stmt_store_result($cstmt);
                 if (mysqli_stmt_num_rows($cstmt) > 0) { mysqli_stmt_close($cstmt); $skipped++; continue; }
                 mysqli_stmt_close($cstmt);
-                if ($has_class_col && $class_id !== null) {
-                    $ins = "INSERT INTO elective_allocation (student_info_id, subject_info_id, sem_info_id, class_info_id) VALUES (?, ?, ?, ?)";
-                    $istmt = mysqli_prepare($conn, $ins);
-                    mysqli_stmt_bind_param($istmt, 'iiii', $sid, $subject_id, $sem_id, $class_id);
-                } else {
-                    $ins = "INSERT INTO elective_allocation (student_info_id, subject_info_id, sem_info_id) VALUES (?, ?, ?)";
-                    $istmt = mysqli_prepare($conn, $ins);
-                    mysqli_stmt_bind_param($istmt, 'iii', $sid, $subject_id, $sem_id);
+
+                // Build dynamic query based on available columns
+                $cols = ['student_info_id', 'subject_info_id', 'sem_info_id'];
+                $params = [$sid, $subject_id, $sem_id];
+                $types = 'iii';
+                
+                if ($has_batch_col) {
+                    $cols[] = 'batch_info_id';
+                    $params[] = $batch_id;
+                    $types .= 'i';
                 }
+                if ($has_class_col && $class_id !== null) {
+                    $cols[] = 'class_info_id';
+                    $params[] = $class_id;
+                    $types .= 'i';
+                }
+                
+                $ins = "INSERT INTO elective_allocation (" . implode(', ', $cols) . ") VALUES (" . rtrim(str_repeat('?,', count($params)), ',') . ")";
+                $istmt = mysqli_prepare($conn, $ins);
+                
                 if (!$istmt) { $errors[] = "DB prepare failed for student {$sid}: " . mysqli_error($conn); continue; }
+                
+                mysqli_stmt_bind_param($istmt, $types, ...$params); // Use splat operator
+
                 if (mysqli_stmt_execute($istmt)) $inserted++; else $errors[] = "Failed to insert student {$sid}: " . mysqli_stmt_error($istmt);
                 mysqli_stmt_close($istmt);
             }
@@ -205,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta charset="utf-g"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Elective Allocation (student -> subject)</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
@@ -240,8 +292,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 <div class="container mx-auto p-6">
   <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-    <div class="flex flex-col md:flex-row md:space-x-4">
-      <div class="w-full md:w-1/3">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="w-full">
         <label class="block font-semibold mb-2">Semester & Program</label>
         <select id="semester" class="w-full p-3 border-2 rounded-xl">
           <option value="" disabled selected>Select Semester & Program</option>
@@ -255,11 +307,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         </select>
       </div>
 
-      <div class="w-full md:w-1/3">
+      <div class="w-full">
+        <label class="block font-semibold mb-2">Batch</label>
+        <select id="batch" class="w-full p-3 border-2 rounded-xl">
+            <option value="" disabled selected>Select Batch</option>
+            </select>
+      </div>
+
+      <div class="w-full">
         <label class="block font-semibold mb-2">Elective Subject</label>
         <select id="elective-subject" class="w-full p-3 border-2 rounded-xl" disabled>
-          <option value="" disabled selected>Select Elective Subject</option>
-        </select>
+          <option value="" disabled selected>Select Semester & Batch</option> </select>
       </div>
     </div>
   </div>
@@ -291,7 +349,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 </div>
 </div>
 
-<!-- Add Student modal (multi-select) -->
 <div id="add-student-modal" class="hidden fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center">
   <div class="bg-white p-6 rounded-lg w-96">
     <h3 class="text-lg font-semibold mb-4">Add Student(s) to Elective</h3>
@@ -314,7 +371,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
   </div>
 </div>
 
-<!-- Bulk action bar -->
 <div class="bulk-bar" id="bulk-bar">
   <div class="flex items-center justify-between gap-4">
     <div>
@@ -331,6 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 <script>
 $(function(){
   let semId = null;
+  let batchId = null; // --- ADDED ---
   let subjectId = null;
   let classesInSem = [];
   let hasClassCol = false;
@@ -350,6 +407,16 @@ $(function(){
     ]
   });
 
+  // --- ADDED --- Load batches on page load
+  $.post('', { action: 'fetch_batches' }, function(resp) {
+    if (resp && resp.status === 'success') {
+      resp.batches.forEach(b => {
+        // Using schema from subject_allocation.php
+        $('#batch').append(`<option value="${b.id}">${b.batch_start_year} - ${b.batch_end_year} (${b.edu_type})</option>`);
+      });
+    }
+  }, 'json');
+
   function updateBulkBar() {
     const count = selectedIds.size;
     if (count > 0) {
@@ -360,19 +427,36 @@ $(function(){
     }
   }
 
-  // when semester changes, load subjects and classes
+  // --- UPDATED --- when semester changes, just store ID and try to load
   $('#semester').on('change', function(){
     semId = $(this).val();
     subjectId = null;
-    $('#elective-subject').prop('disabled', true).empty().append('<option disabled selected>Loading...</option>');
+    $('#elective-subject').prop('disabled', true).empty().append('<option disabled selected>Select Semester & Batch</option>');
     $('#add-student-btn').prop('disabled', true);
     table.clear().draw();
     selectedIds.clear(); updateBulkBar();
+    loadSubjectsAndClasses(); // --- UPDATED ---
+  });
 
-    if (!semId) return;
+  // --- ADDED --- when batch changes, store ID and try to load
+  $('#batch').on('change', function(){
+    batchId = $(this).val();
+    subjectId = null;
+    $('#elective-subject').prop('disabled', true).empty().append('<option disabled selected>Select Semester & Batch</option>');
+    $('#add-student-btn').prop('disabled', true);
+    table.clear().draw();
+    selectedIds.clear(); updateBulkBar();
+    loadSubjectsAndClasses();
+  });
 
+  // --- ADDED --- Helper function to load subjects/classes when BOTH are selected
+  function loadSubjectsAndClasses() {
+    if (!semId || !batchId) return;
+
+    $('#elective-subject').prop('disabled', true).empty().append('<option disabled selected>Loading...</option>');
+    
     // fetch subjects
-    $.post('', { action:'fetch_subjects', sem_info_id: semId }, function(resp){
+    $.post('', { action:'fetch_subjects', sem_info_id: semId, batch_info_id: batchId }, function(resp){ // --- UPDATED ---
       if (!resp || resp.status !== 'success') { Swal.fire('Error', resp?.message || 'Failed to load subjects','error'); return; }
       $('#elective-subject').empty().append('<option disabled selected>Select Elective Subject</option>');
       resp.subjects.forEach(s => $('#elective-subject').append(`<option value="${s.id}">${s.subject_name}</option>`));
@@ -380,19 +464,20 @@ $(function(){
     }, 'json');
 
     // fetch classes for sem (for modal)
-    $.post('', { action:'fetch_classes_for_sem', sem_info_id: semId }, function(resp){
+    $.post('', { action:'fetch_classes_for_sem', sem_info_id: semId, batch_info_id: batchId }, function(resp){ // --- UPDATED ---
       if (resp && resp.status === 'success') classesInSem = resp.classes || []; else classesInSem = [];
     }, 'json');
-  });
+  }
 
+  // --- UPDATED --- when subject changes, load students
   $('#elective-subject').on('change', function(){
     subjectId = $(this).val();
     table.clear().draw();
     $('#add-student-btn').prop('disabled', !subjectId);
     selectedIds.clear(); updateBulkBar();
-    if (!semId || !subjectId) return;
+    if (!semId || !batchId || !subjectId) return; // --- UPDATED ---
 
-    $.post('', { action:'fetch_students', sem_info_id: semId, subject_info_id: subjectId }, function(resp){
+    $.post('', { action:'fetch_students', sem_info_id: semId, batch_info_id: batchId, subject_info_id: subjectId }, function(resp){ // --- UPDATED ---
       if (!resp || resp.status !== 'success') { Swal.fire('Error', resp?.message || 'Failed to load students','error'); return; }
       hasClassCol = !!resp.has_class_col;
       const rows = (resp.students || []).map((s,i) => {
@@ -425,7 +510,6 @@ $(function(){
     updateBulkBar();
   });
 
-  // select all in current page (optional) - can add a header checkbox later
   $('#bulk-clear').on('click', function(){
     selectedIds.clear();
     $('#student-table .select-row').prop('checked', false);
@@ -444,7 +528,8 @@ $(function(){
       confirmButtonText: 'Allocate'
     }).then(res => {
       if (!res.isConfirmed) return;
-      $.post('', { action:'add_students', student_ids: JSON.stringify(ids), subject_info_id: subjectId, sem_info_id: semId }, function(resp){
+      // --- UPDATED ---
+      $.post('', { action:'add_students', student_ids: JSON.stringify(ids), subject_info_id: subjectId, sem_info_id: semId, batch_info_id: batchId }, function(resp){
         if (resp && resp.status === 'success') {
           Swal.fire('Done', `Inserted: ${resp.inserted}, Skipped: ${resp.skipped}`, 'success').then(()=> {
             $('#elective-subject').trigger('change');
@@ -457,11 +542,10 @@ $(function(){
     });
   });
 
-  // Bulk allocate with class -> open class chooser modal then post with class_id
+  // Bulk allocate with class
   $('#bulk-allocate-class').on('click', function(){
     if (selectedIds.size === 0) { Swal.fire('Info','No students selected','info'); return; }
-    // if the DB doesn't support class, show warning and proceed without class
-    // Build class options from classesInSem
+    
     let classOptions = '<option value="">-- None --</option>';
     classesInSem.forEach(c => classOptions += `<option value="${c.id}">${c.classname} - ${c.batch}</option>`);
     Swal.fire({
@@ -476,7 +560,8 @@ $(function(){
       if (!result.isConfirmed) return;
       const classId = result.value || null;
       const ids = Array.from(selectedIds);
-      $.post('', { action:'add_students', student_ids: JSON.stringify(ids), subject_info_id: subjectId, sem_info_id: semId, class_id: classId }, function(resp){
+      // --- UPDATED ---
+      $.post('', { action:'add_students', student_ids: JSON.stringify(ids), subject_info_id: subjectId, sem_info_id: semId, batch_info_id: batchId, class_id: classId }, function(resp){
         if (resp && resp.status === 'success') {
           Swal.fire('Done', `Inserted: ${resp.inserted}, Skipped: ${resp.skipped}`, 'success').then(()=> {
             $('#elective-subject').trigger('change');
@@ -489,18 +574,19 @@ $(function(){
     });
   });
 
-  // inline allocate opens modal with that student preselected
+  // inline allocate
   $('#student-table').on('click', '.allocate-btn', function(){
     const sid = $(this).data('student-id');
     openAddStudentModal([sid]);
   });
 
-  // Add Student button opens modal without preselection
+  // Add Student button
   $('#add-student-btn').on('click', function(){ openAddStudentModal([]); });
 
   function openAddStudentModal(preselectedIds){
-    if (!semId || !subjectId) return;
-    $.post('', { action:'fetch_available_students', sem_info_id: semId, subject_info_id: subjectId }, function(resp){
+    if (!semId || !batchId || !subjectId) return; // --- UPDATED ---
+    // --- UPDATED ---
+    $.post('', { action:'fetch_available_students', sem_info_id: semId, batch_info_id: batchId, subject_info_id: subjectId }, function(resp){
       if (!resp || resp.status !== 'success') { Swal.fire('Error','Failed to load available students','error'); return; }
       const students = resp.students || [];
       if (!students.length) { Swal.fire('Info','No available students to add','info'); return; }
@@ -518,12 +604,14 @@ $(function(){
   }
 
   $('#add-cancel').on('click', function(){ $('#add-student-modal').addClass('hidden'); });
+  
   $('#add-confirm').on('click', function(){
     const selected = $('#popup-student').val();
     const cid = $('#popup-class').val() || null;
     if (!selected || (Array.isArray(selected) && selected.length === 0)) { Swal.fire('Error','Select at least one student','error'); return; }
     const ids = Array.isArray(selected) ? selected.map(x=>parseInt(x)) : [parseInt(selected)];
-    $.post('', { action:'add_students', student_ids: JSON.stringify(ids), subject_info_id: subjectId, sem_info_id: semId, class_id: cid }, function(resp){
+    // --- UPDATED ---
+    $.post('', { action:'add_students', student_ids: JSON.stringify(ids), subject_info_id: subjectId, sem_info_id: semId, batch_info_id: batchId, class_id: cid }, function(resp){
       if (!resp) { Swal.fire('Error','No response from server','error'); return; }
       if (resp.status === 'success') {
         Swal.fire('Added', `Inserted: ${resp.inserted}, Skipped: ${resp.skipped}`, 'success').then(()=> {
@@ -553,7 +641,6 @@ $(function(){
 
   $('#search-student').on('input', function(){ table.column(1).search(this.value, false, true).draw(); });
 
-  // ensure bulk-bar hidden initially
   $('#bulk-bar').hide();
 });
 </script>

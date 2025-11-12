@@ -11,21 +11,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     $action = $_POST['action'];
 
-    // Fetch students for a semester
+    // Fetch students for a semester + batch
     if ($action === 'fetch_students') {
         $sem_id = isset($_POST['sem_info_id']) ? intval($_POST['sem_info_id']) : 0;
-        if ($sem_id <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Invalid semester ID']);
+        $batch_info_id = isset($_POST['batch_info_id']) ? intval($_POST['batch_info_id']) : 0;
+
+        if ($sem_id <= 0 || $batch_info_id <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid semester or batch ID']);
             exit;
         }
 
-        $query = "SELECT si.id, si.first_name, si.last_name, si.gr_no, si.enrollment_no, si.class_info_id, ci.classname, ci.batch 
-                  FROM student_info si 
-                  LEFT JOIN class_info ci ON si.class_info_id = ci.id 
-                  WHERE si.sem_info_id = ? 
+        $query = "SELECT si.id, si.first_name, si.last_name, si.gr_no, si.enrollment_no,
+                         si.class_info_id, ci.classname, ci.batch,
+                         bi.batch_start_year, bi.batch_end_year
+                  FROM student_info si
+                  LEFT JOIN class_info ci ON si.class_info_id = ci.id
+                  LEFT JOIN batch_info bi ON si.batch_info_id = bi.id
+                  WHERE si.sem_info_id = ? AND si.batch_info_id = ?
                   ORDER BY si.enrollment_no";
         $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'i', $sem_id);
+        mysqli_stmt_bind_param($stmt, 'ii', $sem_id, $batch_info_id);
         mysqli_stmt_execute($stmt);
         $result = mysqli_stmt_get_result($stmt);
         $students = [];
@@ -62,6 +67,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         echo json_encode(['status' => 'success', 'classes' => $classes]);
         mysqli_stmt_close($stmt);
+        mysqli_close($conn);
+        exit;
+    }
+
+    // Fetch all batch info
+    if ($action === 'fetch_batches') {
+        $query = "SELECT id, batch_start_year, batch_end_year, edu_type FROM batch_info ORDER BY batch_start_year DESC";
+        $result = mysqli_query($conn, $query);
+        $batches = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $batches[] = $row;
+        }
+        echo json_encode(['status' => 'success', 'batches' => $batches]);
         mysqli_close($conn);
         exit;
     }
@@ -122,22 +140,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         #student-table {
             border-collapse: collapse;
         }
+
         #student-table th,
         #student-table td {
             text-align: center;
             border: 1px solid #d1d5db;
-            /* gray-300 */
         }
+
         #student-table th {
             background-color: #374151;
-            /* gray-700 */
             color: #ffffff;
-            /* white */
         }
+
         #student-table tbody tr:hover {
             background-color: #f9fafb;
-            /* gray-50 */
         }
+
         select.class-dropdown {
             width: 150px;
             padding: 4px;
@@ -155,8 +173,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         include('./navbar.php');
         ?>
         <div class="container mx-auto p-6">
-            <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-                <div class="w-full md:w-1/3">
+            <div class="bg-white p-6 rounded-xl shadow-md mb-6 flex space-x-4">
+                <div class="w-1/3">
                     <label for="semester" class="block text-gray-700 font-bold mb-2">Semester & Program</label>
                     <select id="semester" name="semester" class="w-full p-3 border-2 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:outline-none">
                         <option value="" disabled selected>Select Semester & Program</option>
@@ -169,7 +187,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ?>
                     </select>
                 </div>
+
+                <div class="w-1/3">
+                    <label for="batch" class="block text-gray-700 font-bold mb-2">Select Batch</label>
+                    <select id="batch" name="batch" class="w-full p-3 border-2 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                        <option value="" disabled selected>Select Batch</option>
+                    </select>
+                </div>
             </div>
+
             <div class="p-6 bg-white rounded-xl shadow-md">
                 <div class="flex justify-between items-center mb-6">
                     <button id="save-btn" class="bg-cyan-500 shadow-md hover:shadow-xl px-6 text-white p-2 rounded-full hover:bg-cyan-600 transition-all" disabled>Save Changes</button>
@@ -178,11 +204,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 <table id="student-table" class="min-w-full bg-white shadow-lg rounded-md border border-gray-300">
                     <thead>
                         <tr class="bg-gray-700 text-white">
-                            <th class="border px-4 py-2 rounded-tl-md">No</th>
-                            <th class="border px-4 py-2">Student Name</th>
-                            <th class="border px-4 py-2">Enrollment No</th>
-                            <th class="border px-4 py-2">GR No</th>
-                            <th class="border px-4 py-2 rounded-tr-md">Class</th>
+                            <th>No</th>
+                            <th>Student Name</th>
+                            <th>Enrollment No</th>
+                            <th>GR No</th>
+                            <th>Batch Start Year</th>
+                            <th>Batch End Year</th>
+                            <th>Class</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -194,6 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     <script>
         $(document).ready(function() {
             let selectedSemId = '';
+            let selectedBatchId = '';
             let classes = [];
             let changedAllocations = {};
 
@@ -203,133 +232,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 searching: false,
                 ordering: false,
                 language: {
-                    emptyTable: 'Please select a semester to view students'
+                    emptyTable: 'Please select a semester and batch to view students'
                 },
                 columns: [
                     { data: 'no' },
                     { data: 'student_name' },
                     { data: 'enrollment_no' },
                     { data: 'gr_no' },
+                    { data: 'batch_start_year' },
+                    { data: 'batch_end_year' },
                     { data: 'class' }
                 ]
             });
 
-            // Debug: Log column headers to verify index
-            console.log('Column headers:', table.columns().header().toArray().map(h => $(h).text()));
-
-            // Real-time search for student name
-            function bindSearch() {
-                $('#search-student').off('input').on('input', function() {
-                    const searchValue = $(this).val();
-                    console.log('Search value:', searchValue); // Debug: Log search input
-                    table.column(1).search(searchValue, false, true).draw();
-                    console.log('Filtered rows:', table.rows({ search: 'applied' }).data().toArray()); // Debug: Log filtered data
-                });
-            }
-            bindSearch();
-
-            // Semester change: Load students and classes
-            $('#semester').change(function() {
-                selectedSemId = $(this).val();
-                table.clear().draw();
-                $('#save-btn').prop('disabled', true);
-                changedAllocations = {};
-                $('#search-student').val(''); // Clear search input
-                table.column(1).search('').draw(); // Clear search filter
-
-                if (selectedSemId) {
-                    // Fetch classes
-                    $.ajax({
-                        url: 'student_class_allocation.php',
-                        method: 'POST',
-                        data: { action: 'fetch_classes', sem_info_id: selectedSemId },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.status === 'success') {
-                                classes = response.classes;
-                                // Fetch students
-                                $.ajax({
-                                    url: 'student_class_allocation.php',
-                                    method: 'POST',
-                                    data: { action: 'fetch_students', sem_info_id: selectedSemId },
-                                    dataType: 'json',
-                                    success: function(response) {
-                                        if (response.status === 'success') {
-                                            table.clear();
-                                            if (response.students.length === 0) {
-                                                table.draw();
-                                                return;
-                                            }
-
-                                            const rows = response.students.map((student, index) => {
-                                                let classOptions = '<option value="">Select Class</option>';
-                                                classes.forEach(cls => {
-                                                    const selected = cls.id == student.class_info_id ? 'selected' : '';
-                                                    classOptions += `<option value="${cls.id}" ${selected}>${cls.classname} - ${cls.batch.toUpperCase()}</option>`;
-                                                });
-
-                                                return {
-                                                    no: index + 1,
-                                                    student_name: `${student.first_name} ${student.last_name}`,
-                                                    enrollment_no: student.enrollment_no,
-                                                    gr_no: student.gr_no,
-                                                    class: `<select class="class-dropdown" data-student-id="${student.id}" data-original-class="${student.class_info_id || ''}">
-                                                                ${classOptions}
-                                                            </select>`
-                                                };
-                                            });
-                                            table.rows.add(rows).draw();
-                                            console.log('Table data:', table.rows().data().toArray()); // Debug: Log table data
-
-                                            // Rebind search after table draw
-                                            bindSearch();
-
-                                            // Track changes in class dropdowns
-                                            $('.class-dropdown').on('change', function() {
-                                                const studentId = $(this).data('student-id');
-                                                const newClassId = $(this).val();
-                                                const originalClassId = $(this).data('original-class');
-
-                                                if (newClassId !== originalClassId) {
-                                                    changedAllocations[studentId] = newClassId || null;
-                                                } else {
-                                                    delete changedAllocations[studentId];
-                                                }
-
-                                                $('#save-btn').prop('disabled', Object.keys(changedAllocations).length === 0);
-                                            });
-                                        } else {
-                                            Swal.fire('Error', response.message || 'Failed to load students.', 'error');
-                                        }
-                                    },
-                                    error: function(xhr, status, error) {
-                                        console.error('fetch_students AJAX error:', status, error, 'Response:', xhr.responseText);
-                                        Swal.fire('Error', 'Failed to load students. Check the console for details.', 'error');
-                                    }
-                                });
-                            } else {
-                                Swal.fire('Error', response.message || 'Failed to load classes.', 'error');
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            console.error('fetch_classes AJAX error:', status, error, 'Response:', xhr.responseText);
-                            Swal.fire('Error', 'Failed to load classes. Check the console for details.', 'error');
-                        }
-                    });
+            // Load all batches
+            $.ajax({
+                url: 'student_class_allocation.php',
+                method: 'POST',
+                data: { action: 'fetch_batches' },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.status === 'success') {
+                        response.batches.forEach(batch => {
+                            $('#batch').append(`<option value="${batch.id}">${batch.batch_start_year} - ${batch.batch_end_year} (${batch.edu_type})</option>`);
+                        });
+                    }
                 }
             });
 
-            // Save changes with confirmation
+            // Reload when semester or batch changes
+            $('#semester, #batch').change(function() {
+                selectedSemId = $('#semester').val();
+                selectedBatchId = $('#batch').val();
+                if (selectedSemId && selectedBatchId) loadStudents();
+            });
+
+            function loadStudents() {
+                table.clear().draw();
+                $('#save-btn').prop('disabled', true);
+                changedAllocations = {};
+
+                $.ajax({
+                    url: 'student_class_allocation.php',
+                    method: 'POST',
+                    data: { action: 'fetch_classes', sem_info_id: selectedSemId },
+                    dataType: 'json',
+                    success: function(classResponse) {
+                        if (classResponse.status === 'success') {
+                            classes = classResponse.classes;
+                            $.ajax({
+                                url: 'student_class_allocation.php',
+                                method: 'POST',
+                                data: { action: 'fetch_students', sem_info_id: selectedSemId, batch_info_id: selectedBatchId },
+                                dataType: 'json',
+                                success: function(studentResponse) {
+                                    if (studentResponse.status === 'success') {
+                                        const rows = studentResponse.students.map((student, index) => {
+                                            let classOptions = '<option value="">Select Class</option>';
+                                            classes.forEach(cls => {
+                                                const selected = cls.id == student.class_info_id ? 'selected' : '';
+                                                classOptions += `<option value="${cls.id}" ${selected}>${cls.classname} - ${cls.batch.toUpperCase()}</option>`;
+                                            });
+
+                                            return {
+                                                no: index + 1,
+                                                student_name: `${student.first_name} ${student.last_name}`,
+                                                enrollment_no: student.enrollment_no,
+                                                gr_no: student.gr_no,
+                                                batch_start_year: student.batch_start_year || '-',
+                                                batch_end_year: student.batch_end_year || '-',
+                                                class: `<select class="class-dropdown" data-student-id="${student.id}" data-original-class="${student.class_info_id || ''}">
+                                                            ${classOptions}
+                                                        </select>`
+                                            };
+                                        });
+                                        table.rows.add(rows).draw();
+
+                                        $('.class-dropdown').on('change', function() {
+                                            const studentId = $(this).data('student-id');
+                                            const newClassId = $(this).val();
+                                            const originalClassId = $(this).data('original-class');
+                                            if (newClassId !== originalClassId) changedAllocations[studentId] = newClassId || null;
+                                            else delete changedAllocations[studentId];
+                                            $('#save-btn').prop('disabled', Object.keys(changedAllocations).length === 0);
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+
             $('#save-btn').click(function() {
                 const allocations = Object.keys(changedAllocations).map(studentId => ({
                     student_id: studentId,
                     class_id: changedAllocations[studentId]
                 }));
-
-                if (allocations.length === 0) {
-                    Swal.fire('Info', 'No changes to save.', 'info');
-                    return;
-                }
+                if (!allocations.length) return;
 
                 Swal.fire({
                     title: 'Are you sure?',
@@ -337,35 +337,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     icon: 'question',
                     showCancelButton: true,
                     confirmButtonText: 'Yes',
-                    cancelButtonText: 'No',
-                    confirmButtonColor: '#06b6d4', // cyan-500
-                    cancelButtonColor: '#6b7280' // gray-500
-                }).then((result) => {
+                    cancelButtonText: 'No'
+                }).then(result => {
                     if (result.isConfirmed) {
                         $.ajax({
                             url: 'student_class_allocation.php',
                             method: 'POST',
-                            data: {
-                                action: 'save_allocations',
-                                allocations: JSON.stringify(allocations)
-                            },
+                            data: { action: 'save_allocations', allocations: JSON.stringify(allocations) },
                             dataType: 'json',
                             success: function(response) {
                                 if (response.status === 'success') {
-                                    Swal.fire({
-                                        title: 'Success!',
-                                        text: response.message,
-                                        icon: 'success'
-                                    }).then(() => {
-                                        $('#semester').trigger('change');
-                                    });
+                                    Swal.fire('Saved!', response.message, 'success').then(() => loadStudents());
                                 } else {
-                                    Swal.fire('Error', response.message || 'Failed to save allocations.', 'error');
+                                    Swal.fire('Error', response.message, 'error');
                                 }
-                            },
-                            error: function(xhr, status, error) {
-                                console.error('save_allocations AJAX error:', status, error, 'Response:', xhr.responseText);
-                                Swal.fire('Error', 'Failed to save allocations. Check the console for details.', 'error');
                             }
                         });
                     }
@@ -374,5 +359,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         });
     </script>
 </body>
-
 </html>

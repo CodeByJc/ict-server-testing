@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 include('../../api/db/db_connection.php');
+include('../../api/notifications/fcm_functions.php'); 
 session_start();
 
 try {
@@ -21,7 +22,10 @@ try {
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("isssis", $faculty_id, $title, $date, $type_id, $batch_id, $desc);
 
+
     if ($stmt->execute()) {
+        // sendBatchNotification($batch_id, "New Announcement: $title", $desc);
+        
         echo json_encode(['status' => 'success', 'message' => 'Announcement added successfully!']);
     } else {
         echo json_encode(['status' => 'error', 'message' => 'Database insert failed']);
@@ -29,5 +33,8 @@ try {
 
 } catch (Exception $e) {
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+}
+finally {
+    sendBatchNotification($batch_id, "New Announcement: $title", $desc);
 }
 ?>

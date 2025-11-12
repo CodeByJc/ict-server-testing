@@ -2,11 +2,10 @@
 
 require_once __DIR__ . '/../db/db_connection.php';
 
-function RecentlyPlacedService($batchId) {
+function RecentlyPlacedService() {
     global $conn;
     try {
-        $stmt = $conn->prepare("CALL recentlyPlacedStudents(?)");
-        $stmt->bind_param("s",$batchId);
+        $stmt = $conn->prepare("CALL recentlyPlacedStudents()");
         $stmt->execute();
         $result = $stmt->get_result();
         $studentsList = [];

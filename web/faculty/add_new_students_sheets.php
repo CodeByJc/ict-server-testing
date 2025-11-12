@@ -103,10 +103,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file']) && $_FILES['
                     continue;
                 }
 
+                // compute stream and edu_type for preview & later insertion
+                $stream_val = isset($row['D']) ? trim($row['D']) : '';
+                $edu_type = 'DEGREE';
+                if (stripos($stream_val, 'ICT') !== false || stripos($stream_val, 'ICT-DEGREE') !== false) {
+                    $edu_type = 'DEGREE';
+                }
+                if (stripos($stream_val, 'DIPLOMA') !== false || stripos($stream_val, 'ICT-DIPLO') !== false) {
+                    $edu_type = 'DIPLOMA';
+                }
+
                 $students[] = [
                     'gr_no' => $gr_no,
                     'enrollment_no' => $enrollment_no,
-                    'stream' => isset($row['D']) ? trim($row['D']) : '',
+                    'stream' => $stream_val,
                     'sem' => isset($row['E']) ? trim($row['E']) : '',
                     'classname' => isset($row['F']) ? trim($row['F']) : null,
                     'batch_info_id' => isset($row['G']) ? trim($row['G']) : null,
@@ -128,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file']) && $_FILES['
                     'hostel_building' => isset($row['W']) ? trim($row['W']) : '',
                     'floor_no' => isset($row['X']) ? trim($row['X']) : '',
                     'room_no' => isset($row['Y']) ? trim($row['Y']) : '',
+                    'edu_type' => $edu_type,
                     // category will be added below
                 ];
             }
@@ -275,10 +286,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $edu_type = 'degree';
             if (stripos($stream, 'DIPLOMA') !== false) {
                 $edu_type = 'diploma';
-            } elseif (stripos($stream, 'ICT-DIPLOMA') !== false) {
+            } elseif (stripos($stream, 'ICT-DIPLO') !== false) {
                 $edu_type = 'diploma';
             }
-            // sem value from column E
+            // sem value from column 
             $sem_val = $student['sem'] !== null && $student['sem'] !== '' ? (int)$student['sem'] : null;
             if ($sem_val === null || !is_int($sem_val) || $sem_val <= 0) {
                 // fallback: try deriving sem from classname if possible (e.g., EK1 -> 1)
@@ -413,6 +424,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 }
                 $stmt->close();
             }
+
+
+            // $classname = $student['classname'] ?: 'UNKN';
+
+            // // prefer using numeric batch_info_id (FK) if available
+            // if (!empty($batch_info_id) && is_int($batch_info_id)) {
+            //     // find existing by classname + sem_info_id + batch_id
+            //     $stmt = $conn->prepare("SELECT id FROM class_info WHERE classname = ? AND sem_info_id = ? AND batch_id = ?");
+            //     $stmt->bind_param("sii", $classname, $sem_info_id, $batch_info_id);
+            //     $stmt->execute();
+            //     $res = $stmt->get_result();
+            //     if ($res && $res->num_rows > 0) {
+            //         $class_info_id = (int)$res->fetch_assoc()['id'];
+            //         $stmt->close();
+            //     } else {
+            //         $stmt->close();
+            //         // Insert using batch_id to satisfy FK
+            //         if ($mentor_db_id === null) {
+            //             $stmt_ins = $conn->prepare("INSERT INTO class_info (classname, sem_info_id, batch_id) VALUES (?, ?, ?)");
+            //             $stmt_ins->bind_param("sii", $classname, $sem_info_id, $batch_info_id);
+            //         } else {
+            //             $stmt_ins = $conn->prepare("INSERT INTO class_info (classname, sem_info_id, batch_id, faculty_info_id) VALUES (?, ?, ?, ?)");
+            //             $stmt_ins->bind_param("siii", $classname, $sem_info_id, $batch_info_id, $mentor_db_id);
+            //         }
+            //         if (!$stmt_ins->execute()) {
+            //             throw new Exception("Failed to insert class_info for classname {$classname}: " . $stmt_ins->error);
+            //         }
+            //         $class_info_id = $stmt_ins->insert_id;
+            //         $stmt_ins->close();
+            //     }
+            // } else {
+            //     // fallback to legacy 'batch' letter column if provided (A/B/C)
+            //     $batchLetter = strtoupper(substr(trim($student['batch']), 0, 1)) ?: null;
+            //     if (!in_array($batchLetter, ['A','B','C'])) $batchLetter = null;
+
+            //     if ($batchLetter) {
+            //         $stmt = $conn->prepare("SELECT id FROM class_info WHERE classname = ? AND sem_info_id = ? AND batch = ?");
+            //         $stmt->bind_param("sis", $classname, $sem_info_id, $batchLetter);
+            //         $stmt->execute();
+            //         $res = $stmt->get_result();
+            //         if ($res && $res->num_rows > 0) {
+            //             $class_info_id = (int)$res->fetch_assoc()['id'];
+            //             $stmt->close();
+            //         } else {
+            //             $stmt->close();
+            //             if ($mentor_db_id === null) {
+            //                 $stmt_ins = $conn->prepare("INSERT INTO class_info (classname, sem_info_id, batch) VALUES (?, ?, ?)");
+            //                 $stmt_ins->bind_param("sis", $classname, $sem_info_id, $batchLetter);
+            //             } else {
+            //                 $stmt_ins = $conn->prepare("INSERT INTO class_info (classname, sem_info_id, batch, faculty_info_id) VALUES (?, ?, ?, ?)");
+            //                 $stmt_ins->bind_param("sisi", $classname, $sem_info_id, $batchLetter, $mentor_db_id);
+            //             }
+            //             if (!$stmt_ins->execute()) {
+            //                 throw new Exception("Failed to insert class_info for classname {$classname}: " . $stmt_ins->error);
+            //             }
+            //             $class_info_id = $stmt_ins->insert_id;
+            //             $stmt_ins->close();
+            //         }
+            //     } else {
+            //         // last fallback: match only classname + sem_info_id or create without batch
+            //         $stmt = $conn->prepare("SELECT id FROM class_info WHERE classname = ? AND sem_info_id = ?");
+            //         $stmt->bind_param("si", $classname, $sem_info_id);
+            //         $stmt->execute();
+            //         $res = $stmt->get_result();
+            //         if ($res && $res->num_rows > 0) {
+            //             $class_info_id = (int)$res->fetch_assoc()['id'];
+            //             $stmt->close();
+            //         } else {
+            //             $stmt->close();
+            //             if ($mentor_db_id === null) {
+            //                 $stmt_ins = $conn->prepare("INSERT INTO class_info (classname, sem_info_id) VALUES (?, ?)");
+            //                 $stmt_ins->bind_param("si", $classname, $sem_info_id);
+            //             } else {
+            //                 $stmt_ins = $conn->prepare("INSERT INTO class_info (classname, sem_info_id, faculty_info_id) VALUES (?, ?, ?)");
+            //                 $stmt_ins->bind_param("sii", $classname, $sem_info_id, $mentor_db_id);
+            //             }
+            //             if (!$stmt_ins->execute()) {
+            //                 throw new Exception("Failed to insert class_info for classname {$classname}: " . $stmt_ins->error);
+            //             }
+            //             $class_info_id = $stmt_ins->insert_id;
+            //             $stmt_ins->close();
+            //         }
+            //     }
+            // }
 
             // Determine category already computed at preview; ensure variable exists
             $category = $student['category'] ?? compute_category_for_student($conn, $student);
@@ -727,7 +822,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                     <tr>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['enrollment_no']); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['gr_no']); ?></td>
-                                        <td class="border px-4 py-2"><?php echo htmlspecialchars($student['student_full_name']); ?></td>
+                                        <td class="border px-4 py-2"><?php echo htmlspecialchars($student['student_full_name'] ?? ''); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['gender']); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['phone_no']); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['parent_phone_no']); ?></td>
@@ -735,7 +830,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['stream']); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['classname']); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['sem']); ?></td>
-                                        <td class="border px-4 py-2"><?php echo htmlspecialchars((stripos($student['stream'],'DIPLOMA')!==false)?'diploma':'degree'); ?></td>
+                                        <td class="border px-4 py-2"><?php echo htmlspecialchars($edu_type); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['batch_info_id']); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['batch']); ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($student['address_line']); ?></td>

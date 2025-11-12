@@ -66,18 +66,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // normalize
     $action = trim($action);
 
+    // Fetch batches
+    if ($action === 'fetch_batches') {
+        $query = "SELECT id, batch_start_year, batch_end_year, edu_type FROM batch_info ORDER BY batch_start_year DESC";
+        $res = mysqli_query($conn, $query);
+        $batches = [];
+        while ($row = mysqli_fetch_assoc($res)) {
+            $batches[] = $row;
+        }
+        echo json_encode(['status' => 'success', 'batches' => $batches]);
+        exit;
+    }
+    
+    // ✅ Fetch faculty based on selected batch
+if ($action === 'fetch_faculty_by_batch') {
+    $batch_id = isset($_POST['batch_info_id']) ? intval($_POST['batch_info_id']) : 0;
+    if ($batch_id <= 0) {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid batch ID']);
+        exit;
+    }
+
+    // Assuming faculty_info table has a column batch_info_id
+    $query = "SELECT id, first_name, last_name FROM faculty_info WHERE batch_info_id = ? ORDER BY first_name, last_name";
+    $stmt = mysqli_prepare($conn, $query);
+    mysqli_stmt_bind_param($stmt, 'i', $batch_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $faculties = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $faculties[] = $row;
+    }
+    mysqli_stmt_close($stmt);
+
+    echo json_encode(['status' => 'success', 'faculties' => $faculties]);
+    exit;
+}
+
+
     // 1) fetch subjects for semester
-    if ($action === 'fetch_subjects_by_sem' || $action === 'fetch_subjects') {
+    if ($action === 'fetch_subjects_by_sem_batch' || $action === 'fetch_subjects') {
         $sem_id = isset($_POST['sem_info_id']) ? intval($_POST['sem_info_id']) : 0;
         if ($sem_id <= 0) {
             echo json_encode(['status' => 'error', 'message' => 'Invalid semester id']);
             exit;
         }
 
-        $sql = "SELECT id, subject_name FROM subject_info WHERE sem_info_id = ? AND `type` = 'elective' ORDER BY subject_name";
+        $sql = "SELECT id, subject_name FROM subject_info WHERE sem_info_id = ? and batch_iAND `type` = 'elective' ORDER BY subject_name";
         $stmt = mysqli_prepare($conn, $sql);
         if (!$stmt) {
             echo json_encode(['status' => 'error', 'message' => 'DB prepare failed: ' . mysqli_error($conn)]);
@@ -206,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php $page_title = "Subject Allocation"; include('./navbar.php'); ?>
 <div class="container mx-auto p-6">
   <div class="bg-white p-6 rounded-xl shadow-md mb-6">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div>
         <label class="block font-bold mb-2">Select Semester</label>
         <select id="sem_info" class="w-full p-3 border-2 rounded-xl">
@@ -221,6 +257,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           ?>
         </select>
       </div>
+
+      <!-- ✅ New Batch dropdown -->
+      <div>
+        <label class="block font-bold mb-2">Select Batch</label>
+        <select id="batch_info" class="w-full p-3 border-2 rounded-xl">
+          <option value="" disabled selected>Select Batch</option>
+        </select>
+      </div>
+
       <div>
         <label class="block font-bold mb-2">Select Subject (Elective)</label>
         <select id="subject" class="w-full p-3 border-2 rounded-xl" disabled>
@@ -241,9 +286,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <th class="px-4 py-2">Actions</th>
         </tr>
       </thead>
-      <tbody>
-        <!-- leave tbody empty for DataTables -->
-      </tbody>
+      <tbody></tbody>
     </table>
   </div>
 </div>
@@ -280,11 +323,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 $(function() {
-  // Destroy any existing instance (defensive) then initialize once with explicit columns
-  if ($.fn.DataTable.isDataTable('#faculty-table')) {
-    $('#faculty-table').DataTable().destroy();
-    $('#faculty-table tbody').empty();
-  }
+  // Load batches immediately on page load ✅
+  $.post('', { action: 'fetch_batches' }, function(resp) {
+    if (resp && resp.status === 'success') {
+      resp.batches.forEach(b => {
+        $('#batch_info').append(`<option value="${b.id}">${b.batch_start_year} - ${b.batch_end_year} (${b.edu_type})</option>`);
+      });
+    }
+  }, 'json');
 
   const table = $('#faculty-table').DataTable({
     paging: false,
@@ -299,13 +345,10 @@ $(function() {
     ],
     language: {
       emptyTable: 'Select a semester and subject to load allocated faculty'
-    },
-    // Prevent DataTables from trying to read initial DOM rows (we keep tbody empty)
-    retrieve: false,
-    deferRender: true
+    }
   });
 
-  // Load subjects for selected semester
+  // Load subjects when semester changes
   $('#sem_info').on('change', function() {
     const semId = $(this).val();
     $('#subject').prop('disabled', true).empty().append('<option disabled selected>Loading...</option>');
@@ -316,7 +359,6 @@ $(function() {
 
     $.post('', { action: 'fetch_subjects_by_sem', sem_info_id: semId }, function(resp) {
       if (!resp || resp.status !== 'success') {
-        console.error('fetch_subjects_by_sem:', resp);
         Swal.fire('Error', resp?.message || 'Failed to load subjects', 'error');
         $('#subject').empty().append('<option disabled selected>Select Subject</option>').prop('disabled', true);
         return;
@@ -326,14 +368,10 @@ $(function() {
       subs.forEach(s => $('#subject').append(`<option value="${s.id}">${s.subject_name}</option>`));
       $('#subject').prop('disabled', subs.length === 0);
       if (subs.length === 0) Swal.fire('Info', 'No elective subjects found for this semester', 'info');
-    }, 'json').fail(function(xhr) {
-      console.error('fetch_subjects_by_sem error', xhr.responseText);
-      Swal.fire('Error', 'Failed to load subjects. See console.', 'error');
-      $('#subject').prop('disabled', true);
-    });
+    }, 'json');
   });
 
-  // When subject changes, load allocations and add rows with exact properties matching columns.data
+  // Subject change → load allocations
   $('#subject').on('change', function() {
     const subjectId = $(this).val();
     $('#allocate-btn').prop('disabled', !subjectId);
@@ -341,49 +379,37 @@ $(function() {
     if (!subjectId) return;
 
     $.post('', { action: 'fetch', subject_info_id: subjectId }, function(resp) {
-      if (!resp || resp.status !== 'success' || !Array.isArray(resp.data)) {
-        console.error('Invalid fetch response', resp);
+      if (!resp || resp.status !== 'success') {
         Swal.fire('Error', resp?.message || 'Failed to fetch allocations', 'error');
         return;
       }
 
       const rows = resp.data.map((r, idx) => ({
         no: idx + 1,
-        faculty_name: `${r.first_name || ''} ${r.last_name || ''}`.trim(),
+        faculty_name: `${r.first_name} ${r.last_name}`,
         email: r.email || '',
         actions: `<button class="text-red-500" onclick="deleteAllocation(${r.allocation_id})">Delete</button>`
       }));
-
-      // rows must be objects matching 'columns.data' names
-      table.clear().rows.add(rows).draw();
-    }, 'json').fail(function(xhr){
-      console.error('fetch error', xhr.responseText);
-      Swal.fire('Error', 'Failed to load allocations', 'error');
-    });
+      table.rows.add(rows).draw();
+    }, 'json');
   });
 
-  // Allocation form submit
-  $('#allocate-form').on('submit', function(e) {
-    e.preventDefault();
-    const subjectId = $('#subject_info_id').val();
-    const facultyId = $('#faculty').val();
-    if (!subjectId || !facultyId) { Swal.fire('Error','Select subject and faculty','error'); return; }
-
-    $.post('', { action: 'allocate', subject_info_id: subjectId, faculty_info_id: facultyId }, function(resp) {
-      if (resp && resp.status === 'success') {
-        Swal.fire('Allocated','Faculty allocated successfully','success').then(()=> {
-          closePopup();
-          $('#subject').trigger('change');
-        });
-      } else {
-        console.error('allocate resp', resp);
-        Swal.fire('Error', resp?.message || 'Failed to allocate', 'error');
-      }
-    }, 'json').fail(function(xhr){
-      console.error('allocate error', xhr.responseText);
-      Swal.fire('Error','Failed to allocate','error');
-    });
-  });
+// ✅ When batch changes, load faculty list dynamically
+$('#batch_info').on('change', function () {
+    const batchId = $(this).val();
+    if (!batchId) return;
+    $('#faculty').empty().append('<option disabled selected>Loading...</option>');
+    $.post('', { action: 'fetch_faculty_by_batch', batch_info_id: batchId }, function (resp) {
+        $('#faculty').empty().append('<option disabled selected>Select Faculty</option>');
+        if (resp.status === 'success') {
+            resp.faculties.forEach(f => {
+                $('#faculty').append(`<option value="${f.id}">${f.first_name} ${f.last_name}</option>`);
+            });
+        } else {
+            Swal.fire('Error', resp.message || 'Failed to load faculty list', 'error');
+        }
+    }, 'json');
+});
 });
 
 // popup helpers
@@ -395,7 +421,6 @@ function openAllocatePopup() {
   $('#subject_info_id').val(subjectId);
   $('#allocate-popup').removeClass('hidden');
 }
-
 function closePopup() {
   $('#allocate-popup').addClass('hidden');
   $('#allocate-form')[0].reset();

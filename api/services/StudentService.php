@@ -92,7 +92,7 @@ function StudentLoginService($username, $password, $device_token) {
 function GetSubjectListService($sem_info_id) {
     global $conn;
 
-    $stmt = $conn->prepare("SELECT si.id AS subject_id, si.subject_name, si.subject_code
+    $stmt = $conn->prepare("SELECT *
                             FROM subject_info si
                             WHERE sem_info_id = ?");
     if (!$stmt) {

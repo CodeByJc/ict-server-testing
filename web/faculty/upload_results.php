@@ -535,6 +535,11 @@ $sem_options = [];
 $qr = $conn->query("SELECT `id`, `sem`, `edu_type` FROM `sem_info` ORDER BY `edu_type`, `sem`");
 if ($qr) while ($r = $qr->fetch_assoc()) $sem_options[] = $r;
 
+$batch_options = [];
+$qr_batch = $conn->query("SELECT id, batch_start_year, batch_end_year, edu_type FROM batch_info ORDER BY batch_start_year DESC");
+if ($qr_batch) while ($r = $qr_batch->fetch_assoc()) $batch_options[] = $r;
+$conn->close(); // Close DB connection for page load
+
 $uploadMessage = $_SESSION['result_upload_message'] ?? null;
 unset($_SESSION['result_upload_message']);
 $uploadPreview = $_SESSION['result_upload_preview'] ?? null;
@@ -578,6 +583,15 @@ $uploadPreview = $_SESSION['result_upload_preview'] ?? null;
                         <option value="">Select Semester</option>
                         <?php foreach ($sem_options as $s): ?>
                             <option value="<?php echo (int)$s['id']?>">SEM <?php echo h($s['sem']); ?> - <?php echo strtoupper(h($s['edu_type'])); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Batch</label>
+                    <select name="batch_info_id" required class="p-2 border rounded">
+                        <option value="">Select Batch</option>
+                        <?php foreach ($batch_options as $b): ?>
+                            <option value="<?php echo (int)$b['id']?>"><?php echo h($b['batch_start_year']); ?> - <?php echo h($b['batch_end_year']); ?> (<?php echo h($b['edu_type']); ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </div>

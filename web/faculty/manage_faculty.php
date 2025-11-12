@@ -288,128 +288,171 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     
     // UPDATE FACULTY
     if ($action === 'update_faculty') {
-    $id = intval($_POST['id'] ?? 0);
-    if ($id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid ID']); exit; }
+      $id = intval($_POST['id'] ?? 0);
+      if ($id <= 0) { echo json_encode(['status'=>'error','message'=>'Invalid ID']); exit; }
 
-    $first = trim($_POST['first_name'] ?? '');
-    $last  = trim($_POST['last_name'] ?? '');
-    $username = trim($_POST['username'] ?? '');
-    $gender = trim($_POST['gender'] ?? '');
-    $designation = trim($_POST['designation'] ?? '');
-    $cabin = trim($_POST['cabin_number'] ?? '');
-    $full_name = trim($_POST['faculty_full_name'] ?? '');
-    $address_line = trim($_POST['address_line'] ?? '');
-    $country_name = trim($_POST['country_name'] ?? '');
-    $city = trim($_POST['city'] ?? '');
-    $pincode = trim($_POST['pincode'] ?? '');
-    $contact_number = trim($_POST['faculty_contact_number'] ?? '');
-    $faculty_personal_email = trim($_POST['faculty_personal_email'] ?? '');
-    $faculty_mu_email = trim($_POST['faculty_mu_email'] ?? '');
+      $first = trim($_POST['first_name'] ?? '');
+      $last  = trim($_POST['last_name'] ?? '');
+      $username = trim($_POST['username'] ?? '');
+      $gender = trim($_POST['gender'] ?? '');
+      $designation = trim($_POST['designation'] ?? '');
+      $cabin = trim($_POST['cabin_number'] ?? '');
+      $full_name = trim($_POST['faculty_full_name'] ?? '');
+      $address_line = trim($_POST['address_line'] ?? '');
+      $country_name = trim($_POST['country_name'] ?? '');
+      $city = trim($_POST['city'] ?? '');
+      $pincode = trim($_POST['pincode'] ?? '');
+      $contact_number = trim($_POST['faculty_contact_number'] ?? '');
+      $faculty_personal_email = trim($_POST['faculty_personal_email'] ?? '');
+      $faculty_mu_email = trim($_POST['faculty_mu_email'] ?? '');
 
-    // --- Fetch existing address info --- //
-    $stmt = mysqli_prepare($conn, "SELECT address_info_id FROM faculty_info WHERE id = ? LIMIT 1");
-    mysqli_stmt_bind_param($stmt, 'i', $id);
-    mysqli_stmt_execute($stmt);
-    $rows = fetch_all_stmt($stmt);
-    mysqli_stmt_close($stmt);
-    $existing_address_id = $rows[0]['address_info_id'] ?? null;
-    $address_id = $existing_address_id;
+      // --- Fetch existing address info --- //
+      $stmt = mysqli_prepare($conn, "SELECT address_info_id FROM faculty_info WHERE id = ? LIMIT 1");
+      mysqli_stmt_bind_param($stmt, 'i', $id);
+      mysqli_stmt_execute($stmt);
+      $rows = fetch_all_stmt($stmt);
+      mysqli_stmt_close($stmt);
+      $existing_address_id = $rows[0]['address_info_id'] ?? null;
+      $address_id = $existing_address_id;
 
-    // --- Address handling --- //
-    if ($address_line || $country_name || $city || $pincode) {
-        if ($existing_address_id) {
-            $sql = "UPDATE addresses 
-                    SET username=?, address_line=?, country_name=?, city=?, pincode=? 
-                    WHERE id=?";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, 'sssssi', 
-                $username, $address_line, $country_name, $city, $pincode, $existing_address_id);
-            if (!mysqli_stmt_execute($stmt)) {
-                echo json_encode(['status'=>'error','message'=>'Address update failed: '.mysqli_stmt_error($stmt)]);
-                exit;
-            }
-            mysqli_stmt_close($stmt);
-        } else {
-            // Insert new address
-            $sql = "INSERT INTO addresses (username, address_line, country_name, city, pincode)
-                    VALUES (?, ?, ?, ?, ?)";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, 'sssss', 
-                $username, $address_line, $country_name, $city, $pincode);
-            if (!mysqli_stmt_execute($stmt)) {
-                echo json_encode(['status'=>'error','message'=>'Address insert failed: '.mysqli_stmt_error($stmt)]);
-                exit;
-            }
-            $address_id = mysqli_insert_id($conn);
-            mysqli_stmt_close($stmt);
+      // --- Address handling --- //
+      if ($address_line || $country_name || $city || $pincode) {
+          if ($existing_address_id) {
+              $sql = "UPDATE addresses 
+                      SET username=?, address_line=?, country_name=?, city=?, pincode=? 
+                      WHERE id=?";
+              $stmt = mysqli_prepare($conn, $sql);
+              mysqli_stmt_bind_param($stmt, 'sssssi', 
+                  $username, $address_line, $country_name, $city, $pincode, $existing_address_id);
+              if (!mysqli_stmt_execute($stmt)) {
+                  echo json_encode(['status'=>'error','message'=>'Address update failed: '.mysqli_stmt_error($stmt)]);
+                  exit;
+              }
+              mysqli_stmt_close($stmt);
+          } else {
+              // Insert new address
+              $sql = "INSERT INTO addresses (username, address_line, country_name, city, pincode)
+                      VALUES (?, ?, ?, ?, ?)";
+              $stmt = mysqli_prepare($conn, $sql);
+              mysqli_stmt_bind_param($stmt, 'sssss', 
+                  $username, $address_line, $country_name, $city, $pincode);
+              if (!mysqli_stmt_execute($stmt)) {
+                  echo json_encode(['status'=>'error','message'=>'Address insert failed: '.mysqli_stmt_error($stmt)]);
+                  exit;
+              }
+              $address_id = mysqli_insert_id($conn);
+              mysqli_stmt_close($stmt);
 
-            // Update faculty_info with new address id
-            $sql = "UPDATE faculty_info SET address_info_id=? WHERE id=?";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, 'ii', $address_id, $id);
-            if (!mysqli_stmt_execute($stmt)) {
-                echo json_encode(['status'=>'error','message'=>'Faculty update with new address failed: '.mysqli_stmt_error($stmt)]);
-                exit;
-            }
-            mysqli_stmt_close($stmt);
-        }
-    } elseif (!empty($_POST['clear_address'])) {
-        if ($existing_address_id) {
-            $stmt = mysqli_prepare($conn, "DELETE FROM addresses WHERE id = ?");
-            mysqli_stmt_bind_param($stmt, 'i', $existing_address_id);
-            mysqli_stmt_execute($stmt);
-            mysqli_stmt_close($stmt);
-        }
-        $address_id = null;
+              // Update faculty_info with new address id
+              $sql = "UPDATE faculty_info SET address_info_id=? WHERE id=?";
+              $stmt = mysqli_prepare($conn, $sql);
+              mysqli_stmt_bind_param($stmt, 'ii', $address_id, $id);
+              if (!mysqli_stmt_execute($stmt)) {
+                  echo json_encode(['status'=>'error','message'=>'Faculty update with new address failed: '.mysqli_stmt_error($stmt)]);
+                  exit;
+              }
+              mysqli_stmt_close($stmt);
+          }
+      } elseif (!empty($_POST['clear_address'])) {
+          if ($existing_address_id) {
+              $stmt = mysqli_prepare($conn, "DELETE FROM addresses WHERE id = ?");
+              mysqli_stmt_bind_param($stmt, 'i', $existing_address_id);
+              mysqli_stmt_execute($stmt);
+              mysqli_stmt_close($stmt);
+          }
+          $address_id = null;
+      }
+
+      // --- Update faculty_info --- //
+      if ($address_id === null) {
+          $sql = "UPDATE faculty_info 
+                  SET first_name=?, last_name=?, user_login_id=?, 
+                      gender=?, designation=?, cabin_number=?, faculty_full_name=?, 
+                      address_info_id=NULL 
+                  WHERE id=?";
+          $stmt = mysqli_prepare($conn, $sql);
+          mysqli_stmt_bind_param($stmt, 'sssssssi', 
+              $first, $last, $username, $gender, $designation, $cabin, $full_name, $id);
+      } else {
+          $sql = "UPDATE faculty_info 
+                  SET first_name=?, last_name=?, user_login_id=?, 
+                      gender=?, designation=?, cabin_number=?, faculty_full_name=?, 
+                      address_info_id=? 
+                  WHERE id=?";
+          $stmt = mysqli_prepare($conn, $sql);
+          mysqli_stmt_bind_param($stmt, 'sssssssii', 
+              $first, $last, $username, $gender, $designation, $cabin, $full_name, $address_id, $id);
+      }
+
+      if (!mysqli_stmt_execute($stmt)) {
+          echo json_encode(['status'=>'error','message'=>'Faculty update failed: '.mysqli_stmt_error($stmt)]);
+          exit;
+      }
+      mysqli_stmt_close($stmt);
+
+      // --- Sync user_login --- //
+      if ($username !== '') {
+          // Check if a user_login row exists for the provided username
+          $chk = mysqli_prepare($conn, "SELECT username FROM user_login WHERE username = ? LIMIT 1");
+          if (!$chk) {
+              echo json_encode(['status' => 'error', 'message' => 'DB prepare failed (user lookup): ' . mysqli_error($conn)]);
+              exit;
+          }
+          mysqli_stmt_bind_param($chk, 's', $username);
+          if (!mysqli_stmt_execute($chk)) {
+              $err = mysqli_stmt_error($chk);
+              mysqli_stmt_close($chk);
+              echo json_encode(['status' => 'error', 'message' => 'User lookup failed: ' . $err]);
+              exit;
+          }
+          $res = mysqli_stmt_get_result($chk);
+          $exists = ($res && mysqli_num_rows($res) > 0);
+          mysqli_stmt_close($chk);
+
+          // Build default password (plain) and hash it
+          $default_plain = $first . '@' . $username;
+          $default_password_hash = password_hash($default_plain, PASSWORD_DEFAULT);
+
+          if ($exists) {
+              // Update existing user_login row: email, phone_no, password
+              $upd = mysqli_prepare($conn, "UPDATE user_login SET email = ?, phone_no = ?, password = ? WHERE username = ?");
+              if (!$upd) {
+                  echo json_encode(['status' => 'error', 'message' => 'DB prepare failed (user update): ' . mysqli_error($conn)]);
+                  exit;
+              }
+              mysqli_stmt_bind_param($upd, 'ssss', $faculty_mu_email, $contact_number, $default_password_hash, $username);
+              if (!mysqli_stmt_execute($upd)) {
+                  $err = mysqli_stmt_error($upd);
+                  mysqli_stmt_close($upd);
+                  echo json_encode(['status' => 'error', 'message' => 'User update failed: ' . $err]);
+                  exit;
+              }
+              mysqli_stmt_close($upd);
+          } else {
+              // Insert new user_login row for this faculty (if not present)
+              $ins = mysqli_prepare(
+                  $conn,
+                  "INSERT INTO user_login (username, password, role, isactive, email, phone_no, device_token)
+                  VALUES (?, ?, 'faculty', 1, ?, ?, '')"
+              );
+              if (!$ins) {
+                  echo json_encode(['status' => 'error', 'message' => 'DB prepare failed (user insert): ' . mysqli_error($conn)]);
+                  exit;
+              }
+              mysqli_stmt_bind_param($ins, 'ssss', $username, $default_password_hash, $faculty_mu_email, $contact_number);
+              if (!mysqli_stmt_execute($ins)) {
+                  $err = mysqli_stmt_error($ins);
+                  mysqli_stmt_close($ins);
+                  echo json_encode(['status' => 'error', 'message' => 'User insert failed: ' . $err]);
+                  exit;
+              }
+              mysqli_stmt_close($ins);
+          }
+      }
+
+      echo json_encode(['status'=>'success','message'=>'Faculty updated successfully']);
+      exit;
     }
-
-    // --- Update faculty_info --- //
-    if ($address_id === null) {
-        $sql = "UPDATE faculty_info 
-                SET first_name=?, last_name=?, user_login_id=?, 
-                    gender=?, designation=?, cabin_number=?, faculty_full_name=?, 
-                    address_info_id=NULL 
-                WHERE id=?";
-        $stmt = mysqli_prepare($conn, $sql);
-        mysqli_stmt_bind_param($stmt, 'sssssssi', 
-            $first, $last, $username, $gender, $designation, $cabin, $full_name, $id);
-    } else {
-        $sql = "UPDATE faculty_info 
-                SET first_name=?, last_name=?, user_login_id=?, 
-                    gender=?, designation=?, cabin_number=?, faculty_full_name=?, 
-                    address_info_id=? 
-                WHERE id=?";
-        $stmt = mysqli_prepare($conn, $sql);
-        mysqli_stmt_bind_param($stmt, 'sssssssii', 
-            $first, $last, $username, $gender, $designation, $cabin, $full_name, $address_id, $id);
-    }
-
-    if (!mysqli_stmt_execute($stmt)) {
-        echo json_encode(['status'=>'error','message'=>'Faculty update failed: '.mysqli_stmt_error($stmt)]);
-        exit;
-    }
-    mysqli_stmt_close($stmt);
-
-    // --- Sync user_login --- //
-    if ($username !== '') {
-        $check = mysqli_prepare($conn, "SELECT username FROM user_login WHERE username = ? LIMIT 1");
-        mysqli_stmt_bind_param($check, 's', $username);
-        mysqli_stmt_execute($check);
-        $res = mysqli_stmt_get_result($check);
-        $exists = ($res && mysqli_num_rows($res) > 0);
-        mysqli_stmt_close($check);
-
-        if ($exists) {
-            $upd = mysqli_prepare($conn, "UPDATE user_login SET email=?, phone_no=? WHERE username=?");
-            mysqli_stmt_bind_param($upd, 'sss', $faculty_mu_email, $contact_number, $username);
-            mysqli_stmt_execute($upd);
-            mysqli_stmt_close($upd);
-        }
-    }
-
-    echo json_encode(['status'=>'success','message'=>'Faculty updated successfully']);
-    exit;
-}
 
 
 

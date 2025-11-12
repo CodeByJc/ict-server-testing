@@ -2,15 +2,8 @@
 
 require_once __DIR__ . '/../services/PlacementService.php';
 
-function RecentlyPlaced($input) {
-    if (!isset($input['batch_id'])) {
-        http_response_code(400); // Bad Request
-        echo json_encode(['message' => 'Batch id is required']);
-        return;
-    }
-    $batchId = $input['batch_id'];
-    $response = RecentlyPlacedService($batchId);
-
+function RecentlyPlaced() {
+    $response = RecentlyPlacedService();
     if ($response['status']) {
         echo json_encode($response['data']);
     } else {

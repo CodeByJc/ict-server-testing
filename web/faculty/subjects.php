@@ -405,7 +405,7 @@ $(function () {
     $('#popup-form').on('submit', function (e) {
         e.preventDefault();
         const subId = $('#subject_id').val();
-        const url = subId ? 'update_subject.php' : 'add_subject.php';
+        const url = subId ? 'C.php' : 'add_subject.php';
         const payload = $(this).serializeArray();
         // ensure sem_info_id and batch_id are present
         if (!payload.find(p => p.name === 'sem_info_id')) payload.push({ name: 'sem_info_id', value: $('#sem_info_id').val() || $semester.val() || '' });
