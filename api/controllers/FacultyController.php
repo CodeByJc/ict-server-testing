@@ -77,4 +77,18 @@ function GetMentorByStudentController($input) {
         echo json_encode(['message' => $response['message']]);
     }
 }
+// Controller for faculty directory listing
+function GetFacultyDirectoryController($input) {
+    // Optional filter: designation (e.g., 'ap', 'hod')
+    $designation = isset($input['designation']) ? $input['designation'] : null;
+
+    $response = GetFacultyDirectoryService($designation);
+    if ($response['status']) {
+        echo json_encode($response['data']);
+    } else {
+        http_response_code(500);
+        echo json_encode(['message' => $response['message']]);
+    }
+}
+
 ?>

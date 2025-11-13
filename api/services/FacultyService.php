@@ -183,4 +183,79 @@ function GetMentorByStudentService($studentId) {
     }
 }
 
+// Fetch a directory list of faculty members, optionally filtered by designation
+function GetFacultyDirectoryService($designation = null) {
+    global $conn;
+
+    // Base query selecting relevant columns; build full name if not stored
+    $query = "SELECT * FROM faculty_info";
+    $params = [];
+    $types = '';
+
+    if ($designation !== null && $designation !== '') {
+        $query .= " WHERE designation = ?";
+        $params[] = $designation;
+        $types .= 's';
+    }
+
+    // Order alphabetically for predictable directory display
+    $query .= " ORDER BY first_name, last_name";
+
+    if (count($params) > 0) {
+        $stmt = $conn->prepare($query);
+        if (!$stmt) {
+            return ['status' => false, 'message' => 'Failed to prepare faculty directory query: ' . $conn->error];
+        }
+        $stmt->bind_param($types, ...$params);
+    } else {
+        $stmt = $conn->prepare($query);
+        if (!$stmt) {
+            return ['status' => false, 'message' => 'Failed to prepare faculty directory query: ' . $conn->error];
+        }
+    }
+
+    if (!$stmt->execute()) {
+        $error = $stmt->error;
+        $stmt->close();
+        return ['status' => false, 'message' => 'Failed to execute query: ' . $error];
+    }
+    
+    $result = $stmt->get_result();
+
+    $faculty_directory = [];
+    while ($row = $result->fetch_assoc()) {
+        // Fallback if faculty_full_name column is NULL
+        if (!isset($row['faculty_full_name']) || $row['faculty_full_name'] === null) {
+            $row['faculty_full_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+        }
+        $faculty_directory[] = $row;
+    }
+    $stmt->close();
+
+    // Enrich with domain_name by looking up research_domain if available
+    $domainIds = [];
+    foreach ($faculty_directory as $item) {
+        if (isset($item['domain_id']) && $item['domain_id'] !== null && $item['domain_id'] !== '') {
+            $domainIds[] = (int)$item['domain_id'];
+        }
+    }
+    $domainIds = array_values(array_unique($domainIds));
+
+    if (count($domainIds) > 0) {
+        $domainMap = _GetDomainNamesMap($domainIds);
+        foreach ($faculty_directory as &$item) {
+            $did = isset($item['domain_id']) ? (int)$item['domain_id'] : 0;
+            $item['domain_name'] = $domainMap[$did] ?? null;
+        }
+        unset($item);
+    }
+
+    if (count($faculty_directory) === 0) {
+        return ['status' => true, 'data' => ['faculty_directory' => [], 'count' => 0]]; // Empty but successful
+    }
+
+    return ['status' => true, 'data' => ['faculty_directory' => $faculty_directory, 'count' => count($faculty_directory)]];
+}
+
+
 ?>

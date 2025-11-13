@@ -38,8 +38,16 @@ function FacultyRoutes($method, $subpath) {
                 echo json_encode(['message' => 'Method not allowed']);
             }
             break;
+        case 'directory': // Handle "Faculty/directory"
+            if ($method === 'POST') { // keeping consistency with other endpoints
+            
+                GetFacultyDirectoryController($input);
+            } else {
+                http_response_code(405);
+                echo json_encode(['message' => 'Method not allowed']);
+            }
+        break;
 
-        
         default:
             http_response_code(404); // Not Found
             echo json_encode(['message' => 'Invalid Faculty API endpoint']);
