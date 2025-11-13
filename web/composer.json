@@ -1,6 +1,7 @@
 {
     "require": {
         "phpoffice/phpspreadsheet": "^3.3",
-        "psr/simple-cache": "^3.0"
+        "psr/simple-cache": "^3.0",
+        "firebase/php-jwt": "^6.11"
     }
 }
