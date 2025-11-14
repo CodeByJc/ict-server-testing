@@ -104,8 +104,9 @@ include('../../api/db/db_connection.php');
         <h2 id="popup-title" class="text-xl font-bold mb-4">Add Subject</h2>
         <form id="popup-form" method="POST">
             <input type="hidden" name="subject_id" id="subject_id">
-            <input type="hidden" name="sem_info_id" id="sem_info_id">
-            <!-- We will also include visible select for batch -->
+            <!-- Single, unique hidden sem_info_id used by the popup -->
+            <input type="hidden" name="sem_info_id" id="popup_sem_info_id">
+
             <div class="mb-4">
                 <label for="popup-batch-select" class="block text-sm font-medium mb-1">Batch</label>
                 <select id="popup-batch-select" name="batch_id" class="border-2 rounded p-2 w-full" required>
@@ -113,6 +114,14 @@ include('../../api/db/db_connection.php');
                     <!-- filled dynamically from batchMap -->
                 </select>
                 <div id="popup-batch-years" class="muted mt-1"></div>
+            </div>
+            <div class="mb-4">
+                <label for="popup-sem-display" class="block text-sm font-medium mb-1">Semester</label>
+                <!-- popup_sem_info_id is the hidden input; popup-sem-display only shows text -->
+                <select id="popup-sem-display" class="border-2 rounded p-2 w-full" disabled>
+                    <option value="">Please select semester in the main form</option>
+                </select>
+                <div id="popup-sem" class="muted mt-1"></div>
             </div>
 
             <div class="mb-4">
@@ -136,6 +145,7 @@ include('../../api/db/db_connection.php');
                     <option value="" disabled selected>Select Subject Type</option>
                     <option value="mandatory">Mandatory</option>
                     <option value="elective">Elective</option>
+                    <option value="open-elective">Open Elective</option>
                 </select>
             </div>
 
@@ -167,8 +177,8 @@ include('../../api/db/db_connection.php');
 </div>
 
 <script>
-$(function () {
-    let batchMap = {}; // batch_id -> {start_year, end_year, label}
+    $(function () {
+    let batchMap = {}; // batch_id -> {start, end, label}
     const $semester = $('#semester');
     const $batch = $('#batch');
     const $tbody = $('#subject-tbody');
@@ -225,7 +235,6 @@ $(function () {
     }
 
     function populateBatchSelects(batches) {
-        // populate both main batch filter and popup batch select
         $batch.html('<option value="">All Batches</option>');
         $popupBatchSelect.html('<option value="">Please select a batch</option>');
         batchMap = {};
@@ -292,9 +301,7 @@ $(function () {
     // When semester changes: load batches then subjects
     $semester.on('change', function () {
         const semId = $(this).val();
-        loadBatchesForSemester(semId).always(function () {
-            loadSubjects();
-        });
+        loadBatchesForSemester(semId).always(function(){ loadSubjects(); });
     });
 
     // When batch changes: reload subjects
@@ -314,14 +321,25 @@ $(function () {
 
     // Refresh button
     $('#refresh-subjects').on('click', function(){ 
-        loadBatchesForSemester($semester.val()).always(loadSubjects);
+        loadBatchesForSemester($semester.val()).always(function(){ loadSubjects(); });
     });
 
     // Add button
     $('#open-create').on('click', function () {
         $('#popup-title').text('Add Subject');
         $('#subject_id').val('');
-        $('#sem_info_id').val($semester.val() || '');
+        // set hidden sem_info_id from main semester into popup hidden input
+        const mainSemVal = $semester.val() || '';
+        $('#popup_sem_info_id').val(mainSemVal);
+
+        // populate popup-sem-display with the same option text as main selector
+        const mainSemText = $('#semester option:selected').text() || '';
+        if (mainSemVal) {
+            $('#popup-sem-display').html(`<option value="${mainSemVal}">${escapeHtml(mainSemText)}</option>`);
+        } else {
+            $('#popup-sem-display').html('<option value="">Please select semester in the main form</option>');
+        }
+
         // set popup batch select to currently selected batch if any
         const currentBatch = $batch.val() || '';
         $('#popup-batch-select').val(currentBatch);
@@ -344,8 +362,8 @@ $(function () {
 
         $('#popup-title').text('Edit Subject');
         $('#subject_id').val(id);
-        $('#sem_info_id').val(sem);
-        $('#batch_id').val(batch);
+        // set popup hidden sem_info_id for submission
+        $('#popup_sem_info_id').val(sem);
         $('#subject_name').val(name);
         $('#short_name').val(shortName);
         $('#subject_code').val(code);
@@ -354,9 +372,16 @@ $(function () {
         const c = (credit === 1 || credit === '1' || credit === true || credit === 'true') ? '1' : (credit === 0 || credit === '0' ? '0' : '');
         $('#is_creditable').val(c);
 
+        // update the popup-sem-display to show correct semester text
+        if (sem) {
+            const semText = $(`#semester option[value="${sem}"]`).text() || $('#semester option:selected').text() || '';
+            $('#popup-sem-display').html(`<option value="${sem}">${escapeHtml(semText)}</option>`);
+        } else {
+            $('#popup-sem-display').html('<option value="">Please select semester in the main form</option>');
+        }
+
         // Ensure popup batch select is populated (if not already)
         if ($('#popup-batch-select option').length <= 1 && $semester.val()) {
-            // reload batches synchronously-ish then set value
             loadBatchesForSemester($semester.val()).always(function() {
                 $('#popup-batch-select').val(batch);
                 $popupBatchSelect.trigger('change');
@@ -405,15 +430,35 @@ $(function () {
     $('#popup-form').on('submit', function (e) {
         e.preventDefault();
         const subId = $('#subject_id').val();
-        const url = subId ? 'C.php' : 'add_subject.php';
-        const payload = $(this).serializeArray();
-        // ensure sem_info_id and batch_id are present
-        if (!payload.find(p => p.name === 'sem_info_id')) payload.push({ name: 'sem_info_id', value: $('#sem_info_id').val() || $semester.val() || '' });
-        if (!payload.find(p => p.name === 'batch_id')) payload.push({ name: 'batch_id', value: $('#popup-batch-select').val() || $batch.val() || '' });
+        const url = subId ? 'update_subject.php' : 'add_subject.php';
+
+        // Build payload from form fields; ensure sem_info_id and batch_id are present and non-empty
+        const formData = $(this).serializeArray();
+        const hasSem = formData.find(p => p.name === 'sem_info_id' && p.value !== '');
+        const hasBatch = formData.find(p => p.name === 'batch_id' && p.value !== '');
+
+        // if popup hidden sem_info is empty, fallback to main semester selector
+        const semVal = $('#popup_sem_info_id').val() || $semester.val() || '';
+        if (!hasSem) formData.push({ name: 'sem_info_id', value: semVal });
+        else if (hasSem && (!hasSem.value || hasSem.value === '')) {
+            // replace empty sem value with semVal
+            formData.forEach(p => { if (p.name === 'sem_info_id') p.value = semVal; });
+        }
+
+        const batchVal = $('#popup-batch-select').val() || $batch.val() || '';
+        if (!hasBatch) formData.push({ name: 'batch_id', value: batchVal });
+        else if (hasBatch && (!hasBatch.value || hasBatch.value === '')) {
+            formData.forEach(p => { if (p.name === 'batch_id') p.value = batchVal; });
+        }
 
         // require batch when adding
-        if (!subId && (!$('#popup-batch-select').val())) {
+        if (!subId && (!batchVal)) {
             Swal.fire('Validation', 'Please select a batch for the subject.', 'warning');
+            return;
+        }
+        // require sem when adding/updating
+        if (!semVal) {
+            Swal.fire('Validation', 'Please select a semester in the main form before saving.', 'warning');
             return;
         }
 
@@ -421,13 +466,12 @@ $(function () {
             url,
             method: 'POST',
             dataType: 'json',
-            data: payload,
+            data: formData,
             success(resp) {
                 if (resp && resp.status === 'success') {
                     Swal.fire('Saved', resp.message || 'Saved successfully', 'success');
                     closePopup();
-                    // reload batches & subjects to reflect changes
-                    loadBatchesForSemester($semester.val()).always(loadSubjects);
+                    loadBatchesForSemester($semester.val()).always(function(){ loadSubjects(); });
                 } else {
                     Swal.fire('Error', resp?.message || 'Save failed', 'error');
                 }
@@ -441,18 +485,21 @@ $(function () {
 
     // initial trigger if semester already selected
     if ($semester.val()) {
-        loadBatchesForSemester($semester.val()).always(loadSubjects);
+        loadBatchesForSemester($semester.val()).always(function(){ loadSubjects(); });
     }
 });
 
-function closePopup() {
+    function closePopup() {
     $('#popup-modal').addClass('hidden');
+    // reset the form and popup-specific hidden fields
     $('#popup-form')[0].reset();
     $('#subject_id').val('');
-    $('#sem_info_id').val('');
-    $('#batch_id').val('');
+    // clear the popup hidden sem field (popup_sem_info_id) — not "#sem_info_id"
+    $('#popup_sem_info_id').val('');
+    // popup uses popup-batch-select; clear that
     $('#popup-batch-select').val('');
     $('#popup-batch-years').text('');
+    $('#popup-sem-display').html('<option value="">Please select semester in the main form</option>');
 }
 </script>
 </body>
