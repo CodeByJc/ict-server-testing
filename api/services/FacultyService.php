@@ -140,7 +140,7 @@ function FacultyLoginService($username, $password, $device_token) {
 function GetFacultyListByStudentService($studentId) {
     global $conn; 
 
-    $stmt = $conn->prepare("CALL GetFacultyListByStudent(?)");
+    $stmt = $conn->prepare("CALL GetStudentFacultyList(?)");
     if (!$stmt) {
         return ['status' => false, 'message' => 'Failed to prepare the stored procedure'];
     }
