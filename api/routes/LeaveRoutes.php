@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../Controllers/LeaveController.php';
+require_once __DIR__ . '/../controllers/LeaveController.php';
 
 function LeaveRoutes($method, $subpath) {
     $input = json_decode(file_get_contents("php://input"), true);

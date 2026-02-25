@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../Services/AnnouncementService.php';
+require_once __DIR__ . '/../services/AnnouncementService.php';
 
 function CreateAnnouncementController($input) {
     $response = createAnnouncementService($input);

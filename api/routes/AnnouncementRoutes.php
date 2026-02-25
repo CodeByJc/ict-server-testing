@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../Controllers/AnnouncementController.php';
+require_once __DIR__ . '/../controllers/AnnouncementController.php';
 
 function AnnouncementRoutes($method, $subpath) {
     $input = json_decode(file_get_contents("php://input"), true);

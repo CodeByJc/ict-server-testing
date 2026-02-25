@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../Services/InterviewBankService.php';
+require_once __DIR__ . '/../services/InterviewBankService.php';
 
 function CreateInterviewBankController($input) {
     $response = createInterviewBankService($input);

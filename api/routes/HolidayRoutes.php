@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../Controllers/HolidayController.php';
+require_once __DIR__ . '/../controllers/HolidayController.php';
 
 function HolidayRoutes($method, $subpath) {
     $input = json_decode(file_get_contents("php://input"), true);

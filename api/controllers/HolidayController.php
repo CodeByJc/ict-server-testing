@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../Services/HolidayService.php';
+require_once __DIR__ . '/../services/HolidayService.php';
 
 // Add Holiday
 function AddHolidayController($input) {

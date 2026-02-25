@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../Controllers/EventController.php';
+require_once __DIR__ . '/../controllers/EventController.php';
 
 function EventRoutes($method, $subpath) {
     $input = json_decode(file_get_contents("php://input"), true);

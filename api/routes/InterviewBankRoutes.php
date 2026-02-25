@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../Controllers/InterviewBankController.php';
+require_once __DIR__ . '/../controllers/InterviewBankController.php';
 
 function InterviewBankRoutes($method, $subpath) {
     $input = json_decode(file_get_contents("php://input"), true);

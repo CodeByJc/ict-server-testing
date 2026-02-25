@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../Controllers/ExamController.php';
+require_once __DIR__ . '/../controllers/ExamController.php';
 
 function ExamRoutes($method, $subpath) {
     $input = json_decode(file_get_contents("php://input"), true);

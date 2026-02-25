@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../Services/EventService.php';
+require_once __DIR__ . '/../services/EventService.php';
 
 function CreateEventController($input) {
     $title = isset($input['title']) ? trim($input['title']) : null;
