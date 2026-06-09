@@ -2,6 +2,8 @@
 # db_connection.php
 # Api/
 Api/DB/db_connection.php
+Api/db/db_connection.php
+Api/db/db_connection_temp.php
 # Web/
 Web/DB/db_connection.php
 
