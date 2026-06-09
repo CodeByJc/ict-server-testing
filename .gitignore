@@ -2,14 +2,14 @@
 # db_connection.php
 # Api/
 Api/DB/db_connection.php
-Api/db/db_connection.php
-Api/db/db_connection_temp.php
 # Web/
 Web/DB/db_connection.php
 
 # Ignore API key validator or authorization file
 # ApiKeyValidator.php
 Api/Utils/ApiKeyValidator.php
+Api/db/db_connection.php
+Api/db/db_connection_temp.php
 
 # Ignore environment files
 .env
