@@ -1,0 +1,47 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+
+          script: |
+            cd /var/www/html
+
+            git fetch origin
+            git reset --hard origin/main
+
+            sudo chown -R ubuntu:ubuntu /var/www/html
+
+            if [ -f web/composer.json ]; then
+              cd web
+              composer install --no-interaction || true
+              cd ..
+            fi
+
+            if [ -f api/composer.json ]; then
+              cd api
+              composer install --no-interaction || true
+              cd ..
+            fi
+
+            sudo systemctl restart php8.5-fpm
+            sudo systemctl reload nginx
+
+            echo "Deployment completed"
