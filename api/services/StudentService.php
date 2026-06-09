@@ -45,7 +45,7 @@ function StudentLoginService($username, $password, $device_token) {
     // ✅ Fetch full user data
     $stmt = $conn->prepare("CALL LoginStudent(?)");
     $stmt->bind_param("s", $username);
-    $stmt->execute();
+    $stmt->execute(); //error here
     $result = $stmt->get_result();
 
     if ($result && $result->num_rows > 0) {

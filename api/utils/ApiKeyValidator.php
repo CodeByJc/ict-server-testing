@@ -1,6 +1,10 @@
 <?php
+
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
 function validateApiKey() {
-    $validApiKey = 'ictmu'; // Replace this with getenv('API_KEY') if using .env
+    $validApiKey = $_ENV['VALIDATION_KEY']; // Replace this with getenv('API_KEY') if using .env
 
     // Get the API key from the request headers
     $headers = getallheaders();
